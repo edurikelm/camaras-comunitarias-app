@@ -5,9 +5,11 @@ import { NextRequest } from "next/server";
 // Hoisted mock factories — these run BEFORE imports due to vi.mock hoisting.
 // ---------------------------------------------------------------------------
 
-const { mockSupabaseGetUser } = vi.hoisted(() => ({
-  mockSupabaseGetUser: vi.fn<() => Promise<{ data: { user: { id: string } | null }; error: unknown }>>(),
-}));
+const { mockAuthenticateRequest } = vi.hoisted(() => {
+  return {
+    mockAuthenticateRequest: vi.fn<(request: NextRequest) => Promise<{ id: string } | null>>(),
+  };
+});
 
 const { mockPrismaFindUnique } = vi.hoisted(() => ({
   mockPrismaFindUnique: vi.fn(),
@@ -45,10 +47,8 @@ const {
 // Module mocks
 // ---------------------------------------------------------------------------
 
-vi.mock("@/lib/supabase/server", () => ({
-  createSupabaseServerClient: vi.fn(() => ({
-    auth: { getUser: mockSupabaseGetUser },
-  })),
+vi.mock("@/lib/auth", () => ({
+  authenticateRequest: mockAuthenticateRequest,
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -131,10 +131,7 @@ describe("POST /api/platform/communities", () => {
 
   it("responde 201 cuando un PLATFORM_ADMIN crea una comunidad exitosamente", async () => {
     // Arrange
-    mockSupabaseGetUser.mockResolvedValue({
-      data: { user: { id: "admin-auth-id" } },
-      error: null,
-    });
+    mockAuthenticateRequest.mockResolvedValue({ id: "admin-auth-id" });
     mockPrismaFindUnique.mockResolvedValue({
       id: "platform-user-id",
       platformRole: "PLATFORM_ADMIN",
@@ -152,10 +149,7 @@ describe("POST /api/platform/communities", () => {
 
   it("responde 401 cuando no hay sesión de Supabase", async () => {
     // Arrange
-    mockSupabaseGetUser.mockResolvedValue({
-      data: { user: null },
-      error: null,
-    });
+    mockAuthenticateRequest.mockResolvedValue(null);
 
     // Act
     const response = await POST(createRequest(validBody));
@@ -168,10 +162,7 @@ describe("POST /api/platform/communities", () => {
 
   it("responde 401 cuando Supabase devuelve error de autenticación", async () => {
     // Arrange
-    mockSupabaseGetUser.mockResolvedValue({
-      data: { user: null },
-      error: new Error("Token expired"),
-    });
+    mockAuthenticateRequest.mockResolvedValue(null);
 
     // Act
     const response = await POST(createRequest(validBody));
@@ -184,10 +175,7 @@ describe("POST /api/platform/communities", () => {
 
   it("responde 403 cuando el usuario no existe en Prisma", async () => {
     // Arrange
-    mockSupabaseGetUser.mockResolvedValue({
-      data: { user: { id: "some-auth-id" } },
-      error: null,
-    });
+    mockAuthenticateRequest.mockResolvedValue({ id: "some-auth-id" });
     mockPrismaFindUnique.mockResolvedValue(null);
 
     // Act
@@ -201,10 +189,7 @@ describe("POST /api/platform/communities", () => {
 
   it("responde 403 cuando el usuario no es PLATFORM_ADMIN", async () => {
     // Arrange
-    mockSupabaseGetUser.mockResolvedValue({
-      data: { user: { id: "admin-auth-id" } },
-      error: null,
-    });
+    mockAuthenticateRequest.mockResolvedValue({ id: "admin-auth-id" });
     mockPrismaFindUnique.mockResolvedValue({
       id: "user-id",
       platformRole: null,
@@ -221,10 +206,7 @@ describe("POST /api/platform/communities", () => {
 
   it("responde 400 cuando el dominio lanza CommunityCreationInvariantError", async () => {
     // Arrange
-    mockSupabaseGetUser.mockResolvedValue({
-      data: { user: { id: "admin-auth-id" } },
-      error: null,
-    });
+    mockAuthenticateRequest.mockResolvedValue({ id: "admin-auth-id" });
     mockPrismaFindUnique.mockResolvedValue({
       id: "platform-user-id",
       platformRole: "PLATFORM_ADMIN",
@@ -244,10 +226,7 @@ describe("POST /api/platform/communities", () => {
 
   it("responde 403 cuando el dominio lanza PlatformAuthorizationError", async () => {
     // Arrange
-    mockSupabaseGetUser.mockResolvedValue({
-      data: { user: { id: "admin-auth-id" } },
-      error: null,
-    });
+    mockAuthenticateRequest.mockResolvedValue({ id: "admin-auth-id" });
     mockPrismaFindUnique.mockResolvedValue({
       id: "platform-user-id",
       platformRole: "PLATFORM_ADMIN",
@@ -267,10 +246,7 @@ describe("POST /api/platform/communities", () => {
 
   it("responde 500 para errores inesperados del dominio", async () => {
     // Arrange
-    mockSupabaseGetUser.mockResolvedValue({
-      data: { user: { id: "admin-auth-id" } },
-      error: null,
-    });
+    mockAuthenticateRequest.mockResolvedValue({ id: "admin-auth-id" });
     mockPrismaFindUnique.mockResolvedValue({
       id: "platform-user-id",
       platformRole: "PLATFORM_ADMIN",
@@ -288,10 +264,7 @@ describe("POST /api/platform/communities", () => {
 
   it("responde 400 cuando falta community.name en el body", async () => {
     // Arrange
-    mockSupabaseGetUser.mockResolvedValue({
-      data: { user: { id: "admin-auth-id" } },
-      error: null,
-    });
+    mockAuthenticateRequest.mockResolvedValue({ id: "admin-auth-id" });
     mockPrismaFindUnique.mockResolvedValue({
       id: "platform-user-id",
       platformRole: "PLATFORM_ADMIN",
@@ -309,10 +282,7 @@ describe("POST /api/platform/communities", () => {
 
   it("responde 400 cuando falta firstAdmin.authProviderId en el body", async () => {
     // Arrange
-    mockSupabaseGetUser.mockResolvedValue({
-      data: { user: { id: "admin-auth-id" } },
-      error: null,
-    });
+    mockAuthenticateRequest.mockResolvedValue({ id: "admin-auth-id" });
     mockPrismaFindUnique.mockResolvedValue({
       id: "platform-user-id",
       platformRole: "PLATFORM_ADMIN",
@@ -334,10 +304,7 @@ describe("POST /api/platform/communities", () => {
 
   it("responde 400 cuando falta firstAdmin.email en el body", async () => {
     // Arrange
-    mockSupabaseGetUser.mockResolvedValue({
-      data: { user: { id: "admin-auth-id" } },
-      error: null,
-    });
+    mockAuthenticateRequest.mockResolvedValue({ id: "admin-auth-id" });
     mockPrismaFindUnique.mockResolvedValue({
       id: "platform-user-id",
       platformRole: "PLATFORM_ADMIN",
@@ -359,10 +326,7 @@ describe("POST /api/platform/communities", () => {
 
   it("responde 500 cuando el body no es JSON valido", async () => {
     // Arrange
-    mockSupabaseGetUser.mockResolvedValue({
-      data: { user: { id: "admin-auth-id" } },
-      error: null,
-    });
+    mockAuthenticateRequest.mockResolvedValue({ id: "admin-auth-id" });
     mockPrismaFindUnique.mockResolvedValue({
       id: "platform-user-id",
       platformRole: "PLATFORM_ADMIN",

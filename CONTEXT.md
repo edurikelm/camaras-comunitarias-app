@@ -87,7 +87,7 @@ Actualiza este documento cuando una regla durable cambie o se descubra durante e
 - Una alerta MEDIUM notifica a administradores, guardias autorizados y vecinos activos del sector comunitario aplicable.
 - Una alerta HIGH notifica a administradores, guardias autorizados y vecinos activos del sector; si no hay sector aplicable, puede notificar a toda la comunidad activa.
 - Una alerta CRITICAL se usa para SOS o emergencia y notifica a administradores, guardias autorizados y vecinos activos del sector; si no hay sector aplicable, notifica a toda la comunidad activa.
-- La severidad sugerida por defecto es: emergencia CRITICAL, robo HIGH, accidente HIGH o MEDIUM, persona sospechosa MEDIUM, vehiculo sospechoso MEDIUM y otro LOW.
+- La severidad sugerida por defecto es: emergencia CRITICAL, robo HIGH, accidente HIGH, persona sospechosa MEDIUM, vehiculo sospechoso MEDIUM y otro LOW.
 
 ## Camera Management Rules
 
@@ -110,6 +110,41 @@ Actualiza este documento cuando una regla durable cambie o se descubra durante e
 - Solo camaras ACTIVE pueden tener permisos configurados.
 - Los permisos para camaras PENDING_REVIEW, INACTIVE, PRIVATE o REJECTED no tienen efecto.
 - Un permiso por rol se elimina al asignar el rol a un miembro; un permiso por usuario permanece aunque cambie su rol.
+
+## Incident and Alert Rules
+
+- Un incidente se crea junto con su alerta en la misma transaccion: createIncident persiste Incident + Alert.
+- Pueden crear incidentes: miembros ACTIVE con rol NEIGHBOR o GUARD.
+- El creador del incidente no necesita tener permisos de camara.
+- Sector es opcional en el incidente; si no se especifica, la alerta se enva segun la regla de sin sector aplicable.
+- La severidad inicial se sugiere automaticamente por tipo de incidente.
+- Un ADMIN o GUARD puede ajustar la severidad despues de creado el incidente.
+- La alerta se persiste en BD en este slice; la notificacion realtime via Socket.IO queda para un slice posterior.
+
+## Recording Request Rules
+
+- Pueden crear solicitudes de grabacion: el creador del incidente, administradores de comunidad y guardias autorizados.
+- Una solicitud se refiere a una camara de la misma comunidad del incidente.
+- El rango horario maximo es 30 minutos; se valida al crear la solicitud.
+- El dueno de la camara puede aceptar o rechazar la solicitud.
+- Al aceptar, el dueno puede agregar un comentario.
+- Al rechazar, el dueno puede agregar un comentario.
+- El solicitante no puede cancelar la solicitud.
+- Se permiten multiples solicitudes para la misma camara e incidente.
+
+## Live View Rules
+
+- Para ver un stream en vivo, el usuario debe tener un permiso vigente: por rol, por usuario, o ser ADMIN de la comunidad.
+- El horario del permiso (scheduleStart/scheduleEnd) se verifica contra la hora actual HH:MM.
+- Si scheduleStart > scheduleEnd lexicograficamente, se interpreta como rango que cruza medianoche: se permite si hora actual >= scheduleStart O <= scheduleEnd.
+- Solo camaras en estado ACTIVE pueden emitir streams.
+- La API de live view devuelve un token JWT con cameraId, userId y expiresAt (1 hora).
+- El token se firma con CAMERA_STREAM_SECRET y se valida en MediaMTX.
+- El stream URL se arma con NEXT_PUBLIC_MEDIA_SERVER_URL + /stream/{cameraId}?token={jwt}.
+- Cada vez que se genera un token valido se audita con CAMERA_LIVE_VIEWED.
+
+## Incident Status Rules
+
 - Los estados de incidente del MVP son OPEN, REVIEWING y CLOSED.
 - Un incidente OPEN esta recien reportado o pendiente de atencion.
 - Un incidente REVIEWING esta siendo gestionado por un administrador de comunidad o guardia.
@@ -123,12 +158,21 @@ Actualiza este documento cuando una regla durable cambie o se descubra durante e
 - El creador del incidente puede agregar informacion adicional mientras el incidente este OPEN o REVIEWING.
 - Vecinos notificados que no crearon el incidente no pueden comentar por defecto.
 - El chat vecinal queda fuera del MVP.
+
+## Audit Rules
+
 - En el MVP se debe auditar aprobacion y bloqueo de miembros, cambios de rol, gestion y revision de camaras, cambios de permisos de camara, visualizacion de camara en vivo, creacion y cambios de estado de incidentes, solicitudes de grabacion, SOS, y subida o visualizacion de evidencia.
 - Los logs de auditoria deben registrar al menos actor, comunidad, accion, entidad afectada y fecha/hora.
 - En el MVP no hay borrado automatico de logs de auditoria ni evidencia.
 - Los logs de auditoria se conservan indefinidamente hasta definir una politica de retencion futura.
+
+## Evidence Rules
+
 - La evidencia de imagenes se conserva mientras el incidente este abierto o en revision; al cerrar el incidente se mantiene salvo eliminacion manual autorizada.
 - Las entidades sensibles deben prepararse para soft delete cuando aplique.
+
+## Data Conventions
+
 - Los identificadores persistentes del MVP deben usar UUID en base de datos.
 - La UI puede ofrecer presets de permisos, pero no debe otorgar acceso automatico sin confirmacion del dueno.
 - Nunca mostrar camaras sin validar comunidad, rol, permisos, horario permitido y estado de camara.
@@ -141,17 +185,10 @@ Actualiza este documento cuando una regla durable cambie o se descubra durante e
 - El streamKey no debe ser enumerable ni predecible.
 - El streamKey debe almacenarse como hash cuando solo se necesite validar identidad del stream; el frontend debe operar con URL o token temporal autorizado.
 - El frontend debe recibir preferentemente una URL o token temporal autorizado para WebRTC, no el streamKey crudo.
-- Las solicitudes de grabacion requieren aceptacion o rechazo del dueno de la camara.
-- En el MVP, pueden crear solicitudes de grabacion el creador del incidente, administradores de comunidad y guardias autorizados.
-- Un vecino notificado que no creo el incidente no puede solicitar grabaciones por defecto.
-- Una solicitud de grabacion solo puede referirse a camaras de la misma comunidad del incidente.
-- Toda solicitud de grabacion debe estar asociada a un incidente e incluir motivo o descripcion.
-- En el MVP, una solicitud de grabacion puede cubrir como maximo 30 minutos.
-- No se permite solicitar grabaciones de un dia completo en una sola solicitud.
-- En el MVP, aceptar una solicitud de grabacion significa consentimiento para revision o coordinacion manual, no extraccion automatica de clips.
-- Una solicitud de grabacion aceptada no otorga acceso temporal automatico al stream ni a grabaciones completas.
-- El dueno de camara puede agregar comentario o evidencia derivada si corresponde.
 - En el MVP, los horarios de permisos de camara se modelan como rangos horarios simples; reglas por dia o calendarios complejos quedan para iteraciones futuras.
+
+## MVP Scope
+
 - El MVP no incluye IA; la prioridad es validar colaboracion segura entre vecinos.
 - El primer corte funcional del MVP debe ser un tracer bullet de punta a punta que valide creacion de comunidad por plataforma, invitacion, aprobacion de vecino, registro y revision de camara, permiso explicito, live view autorizado, incidente, alerta interna, solicitud de grabacion manual y auditoria.
 
