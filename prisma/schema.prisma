@@ -1,0 +1,422 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PlatformRole {
+  PLATFORM_ADMIN
+}
+
+enum CommunityStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum CommunityMemberRole {
+  NEIGHBOR
+  ADMIN
+  GUARD
+}
+
+enum CommunityMemberStatus {
+  PENDING
+  ACTIVE
+  BLOCKED
+}
+
+enum CameraStatus {
+  PENDING_REVIEW
+  ACTIVE
+  INACTIVE
+  PRIVATE
+  REJECTED
+}
+
+enum IncidentType {
+  THEFT
+  SUSPICIOUS_PERSON
+  SUSPICIOUS_VEHICLE
+  EMERGENCY
+  ACCIDENT
+  OTHER
+}
+
+enum IncidentStatus {
+  OPEN
+  REVIEWING
+  CLOSED
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RecordingRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum AuditAction {
+  INVITATION_CREATED
+  MEMBER_REQUESTED
+  MEMBER_APPROVED
+  MEMBER_BLOCKED
+  MEMBER_ROLE_CHANGED
+  COMMUNITY_CREATED
+  COMMUNITY_UPDATED
+  CAMERA_CREATED
+  CAMERA_REVIEWED
+  CAMERA_PERMISSION_CHANGED
+  CAMERA_LIVE_VIEWED
+  INCIDENT_CREATED
+  INCIDENT_STATUS_CHANGED
+  INCIDENT_COMMENT_CREATED
+  RECORDING_REQUEST_CREATED
+  RECORDING_REQUEST_ACCEPTED
+  RECORDING_REQUEST_REJECTED
+  SOS_CREATED
+  EVIDENCE_UPLOADED
+  EVIDENCE_VIEWED
+}
+
+model User {
+  id             String        @id @default(uuid()) @db.Uuid
+  authProviderId String        @unique @db.Uuid
+  email          String        @unique
+  name           String?
+  platformRole   PlatformRole?
+
+  communityMember CommunityMember?
+
+  ownedCameras             Camera[]              @relation("CameraOwner")
+  createdIncidents         Incident[]            @relation("IncidentCreator")
+  createdSosEvents         SosEvent[]            @relation("SosCreator")
+  uploadedEvidence         Evidence[]            @relation("EvidenceUploader")
+  authoredIncidentComments IncidentComment[]      @relation("IncidentCommentAuthor")
+  createdInvitations       CommunityInvitation[] @relation("InvitationCreator")
+  allowedCameraPermissions CameraPermission[]    @relation("CameraPermissionUser")
+  requestedRecordings      RecordingRequest[]    @relation("RecordingRequester")
+  ownedRecordingRequests   RecordingRequest[]    @relation("RecordingOwner")
+  auditLogs                AuditLog[]            @relation("AuditActor")
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+}
+
+model Community {
+  id      String          @id @default(uuid()) @db.Uuid
+  name    String
+  address String?
+  status  CommunityStatus @default(ACTIVE)
+
+  members     CommunityMember[]
+  sectors     CommunitySector[]
+  invitations CommunityInvitation[]
+  cameras     Camera[]
+  incidents   Incident[]
+  sosEvents   SosEvent[]
+  alerts      Alert[]
+  evidence    Evidence[]
+  auditLogs   AuditLog[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([status])
+}
+
+model CommunityMember {
+  id          String                @id @default(uuid()) @db.Uuid
+  userId      String                @unique @db.Uuid
+  communityId String                @db.Uuid
+  sectorId    String?               @db.Uuid
+  role        CommunityMemberRole
+  status      CommunityMemberStatus @default(PENDING)
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  community Community        @relation(fields: [communityId], references: [id], onDelete: Restrict)
+  sector    CommunitySector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([communityId])
+  @@index([communityId, status])
+  @@index([communityId, role])
+  @@index([sectorId])
+}
+
+model CommunityInvitation {
+  id          String  @id @default(uuid()) @db.Uuid
+  communityId String  @db.Uuid
+  codeHash    String  @unique
+  createdById String? @db.Uuid
+
+  expiresAt DateTime?
+  usedAt    DateTime?
+  revokedAt DateTime?
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Restrict)
+  createdBy User?     @relation("InvitationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([communityId])
+  @@index([createdById])
+}
+
+model CommunitySector {
+  id          String  @id @default(uuid()) @db.Uuid
+  communityId String  @db.Uuid
+  name        String
+  description String?
+
+  community Community @relation(fields: [communityId], references: [id], onDelete: Restrict)
+
+  members   CommunityMember[]
+  cameras   Camera[]
+  incidents Incident[]
+  sosEvents SosEvent[]
+  alerts    Alert[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([communityId, name])
+  @@index([communityId])
+}
+
+model Camera {
+  id          String       @id @default(uuid()) @db.Uuid
+  communityId String       @db.Uuid
+  ownerId     String       @db.Uuid
+  sectorId    String?      @db.Uuid
+  name        String
+  description String?
+
+  approximateLocation String?
+  rtspUrlEncrypted    String?
+  streamKeyHash       String?
+  status              CameraStatus @default(PENDING_REVIEW)
+  technicalStatus     String?
+  reviewNote          String?
+
+  community Community        @relation(fields: [communityId], references: [id], onDelete: Restrict)
+  owner     User             @relation("CameraOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  sector    CommunitySector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+
+  permissions       CameraPermission[]
+  recordingRequests RecordingRequest[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([communityId])
+  @@index([ownerId])
+  @@index([sectorId])
+  @@index([communityId, status])
+}
+
+model CameraPermission {
+  id       String @id @default(uuid()) @db.Uuid
+  cameraId String @db.Uuid
+
+  roleAllowed   CommunityMemberRole?
+  userIdAllowed String?              @db.Uuid
+
+  canViewLive          Boolean @default(false)
+  canRequestRecordings Boolean @default(false)
+  scheduleStart        String?
+  scheduleEnd          String?
+
+  camera Camera @relation(fields: [cameraId], references: [id], onDelete: Cascade)
+  user   User?  @relation("CameraPermissionUser", fields: [userIdAllowed], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cameraId, roleAllowed])
+  @@unique([cameraId, userIdAllowed])
+  @@index([cameraId])
+  @@index([userIdAllowed])
+}
+
+model Incident {
+  id          String        @id @default(uuid()) @db.Uuid
+  communityId String        @db.Uuid
+  createdById String        @db.Uuid
+  sectorId    String?       @db.Uuid
+  type        IncidentType
+  severity    AlertSeverity
+  status      IncidentStatus @default(OPEN)
+  description String
+  location    String?
+  closedReason String?
+  closedAt     DateTime?
+
+  community Community        @relation(fields: [communityId], references: [id], onDelete: Restrict)
+  createdBy User             @relation("IncidentCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  sector    CommunitySector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+
+  evidence          Evidence[]
+  alerts            Alert[]
+  comments          IncidentComment[]
+  recordingRequests RecordingRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([communityId])
+  @@index([createdById])
+  @@index([sectorId])
+  @@index([communityId, status])
+  @@index([communityId, severity])
+}
+
+model SosEvent {
+  id          String         @id @default(uuid()) @db.Uuid
+  communityId String         @db.Uuid
+  createdById String         @db.Uuid
+  sectorId    String?        @db.Uuid
+  status      IncidentStatus @default(OPEN)
+
+  approximateLocation String?
+  resolvedReason      String?
+  resolvedAt          DateTime?
+
+  community Community        @relation(fields: [communityId], references: [id], onDelete: Restrict)
+  createdBy User             @relation("SosCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  sector    CommunitySector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+
+  alerts Alert[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([communityId])
+  @@index([createdById])
+  @@index([sectorId])
+  @@index([communityId, status])
+}
+
+model Evidence {
+  id           String @id @default(uuid()) @db.Uuid
+  communityId  String @db.Uuid
+  incidentId   String @db.Uuid
+  uploadedById String @db.Uuid
+
+  storagePath String
+  mimeType    String
+  metadata    Json?
+
+  community  Community @relation(fields: [communityId], references: [id], onDelete: Restrict)
+  incident   Incident  @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  uploadedBy User      @relation("EvidenceUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  @@index([communityId])
+  @@index([incidentId])
+  @@index([uploadedById])
+}
+
+model IncidentComment {
+  id         String @id @default(uuid()) @db.Uuid
+  incidentId String @db.Uuid
+  authorId   String @db.Uuid
+  message    String
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  author   User     @relation("IncidentCommentAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@index([incidentId])
+  @@index([authorId])
+}
+
+model Alert {
+  id          String  @id @default(uuid()) @db.Uuid
+  communityId String  @db.Uuid
+  incidentId  String? @db.Uuid
+  sosEventId  String? @db.Uuid
+  sectorId    String? @db.Uuid
+
+  severity AlertSeverity
+  type     String
+  message  String
+
+  community Community        @relation(fields: [communityId], references: [id], onDelete: Restrict)
+  incident  Incident?        @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  sosEvent  SosEvent?        @relation(fields: [sosEventId], references: [id], onDelete: SetNull)
+  sector    CommunitySector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([communityId])
+  @@index([incidentId])
+  @@index([sosEventId])
+  @@index([sectorId])
+  @@index([communityId, severity])
+}
+
+model RecordingRequest {
+  id            String                 @id @default(uuid()) @db.Uuid
+  incidentId    String                 @db.Uuid
+  cameraId      String                 @db.Uuid
+  requestedById String                 @db.Uuid
+  ownerId       String                 @db.Uuid
+  startTime     DateTime
+  endTime       DateTime
+  reason        String
+  status        RecordingRequestStatus @default(PENDING)
+  ownerComment  String?
+
+  incident    Incident @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  camera      Camera   @relation(fields: [cameraId], references: [id], onDelete: Restrict)
+  requestedBy User     @relation("RecordingRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  owner       User     @relation("RecordingOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([incidentId])
+  @@index([cameraId])
+  @@index([requestedById])
+  @@index([ownerId])
+  @@index([status])
+}
+
+model AuditLog {
+  id          String  @id @default(uuid()) @db.Uuid
+  communityId String? @db.Uuid
+  actorId     String? @db.Uuid
+  action      AuditAction
+  entityType  String
+  entityId    String  @db.Uuid
+  metadata    Json?
+
+  community Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  actor     User?      @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([communityId])
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([action])
+}
