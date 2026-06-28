@@ -9,6 +9,7 @@ import type {
   CreateAuditLogInput,
 } from "@/domain/community/evidence/evidence-repository";
 import { createTransactionalRepository } from "@/infrastructure/prisma/_internal/create-transactional-repository";
+import type { AuditLogPort } from "@/domain/shared/audit-log";
 
 /**
  * Prisma-backed EvidenceRepository.
@@ -18,7 +19,10 @@ import { createTransactionalRepository } from "@/infrastructure/prisma/_internal
  */
 export function createPrismaEvidenceRepository(
   prisma: PrismaClient,
+  deps: { auditLog: AuditLogPort },
 ): EvidenceRepository {
+  const { auditLog } = deps;
+
   function createUnitOfWork(
     tx: Prisma.TransactionClient,
   ): EvidenceRepository {
@@ -142,15 +146,13 @@ export function createPrismaEvidenceRepository(
       // -------------------------------------------------------------------
 
       async createAuditLog(input: CreateAuditLogInput) {
-        await tx.auditLog.create({
-          data: {
-            communityId: input.communityId,
-            actorId: input.actorId,
-            action: input.action,
-            entityType: input.entityType,
-            entityId: input.entityId,
-            metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
-          },
+        await auditLog.record({
+          communityId: input.communityId,
+          actorId: input.actorId,
+          action: input.action,
+          entityType: input.entityType,
+          entityId: input.entityId,
+          metadata: input.metadata,
         });
       },
 

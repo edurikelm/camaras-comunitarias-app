@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireAuthenticatedUser } from "@/lib/api/auth-prelude";
 import { createPrismaEvidenceRepository } from "@/infrastructure/prisma/evidence-repository";
+import { createPrismaAuditLogAdapter } from "@/infrastructure/prisma/audit-log-adapter";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { uploadEvidence } from "@/domain/community/evidence/create-evidence";
 import { getEvidence } from "@/domain/community/evidence/get-evidence";
@@ -83,7 +84,8 @@ export async function POST(
 
     // 6. Execute domain service
     const { communityId, incidentId } = await params;
-    const evidenceRepository = createPrismaEvidenceRepository(auth.prisma);
+    const auditLog = createPrismaAuditLogAdapter(auth.prisma);
+    const evidenceRepository = createPrismaEvidenceRepository(auth.prisma, { auditLog });
     const evidenceStorage = createSupabaseEvidenceStorageFromEnv();
 
     const result = await uploadEvidence(
@@ -122,7 +124,8 @@ export async function GET(
   try {
     // 3. Execute domain service
     const { communityId, incidentId } = await params;
-    const evidenceRepository = createPrismaEvidenceRepository(auth.prisma);
+    const auditLog = createPrismaAuditLogAdapter(auth.prisma);
+    const evidenceRepository = createPrismaEvidenceRepository(auth.prisma, { auditLog });
     const evidenceStorage = createSupabaseEvidenceStorageFromEnv();
 
     const result = await getEvidence(

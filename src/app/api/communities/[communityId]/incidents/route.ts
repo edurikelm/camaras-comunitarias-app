@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireAuthenticatedUser } from "@/lib/api/auth-prelude";
 import { createPrismaIncidentRepository } from "@/infrastructure/prisma/incident-repository";
+import { createPrismaAuditLogAdapter } from "@/infrastructure/prisma/audit-log-adapter";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { createIncident } from "@/domain/community/incident/create-incident";
 import { IncidentType } from "@/generated/prisma/enums";
@@ -63,7 +64,8 @@ export async function POST(
 
     // 4. Execute domain service
     const { communityId } = await params;
-    const incidentRepository = createPrismaIncidentRepository(auth.prisma);
+    const auditLog = createPrismaAuditLogAdapter(auth.prisma);
+    const incidentRepository = createPrismaIncidentRepository(auth.prisma, { auditLog });
 
     const result = await createIncident(
       {

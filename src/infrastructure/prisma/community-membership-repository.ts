@@ -5,6 +5,7 @@ import type {
 } from "@/domain/community/community-repository";
 import { CommunityMemberRole, CommunityMemberStatus } from "@/generated/prisma/enums";
 import { createTransactionalRepository } from "@/infrastructure/prisma/_internal/create-transactional-repository";
+import type { AuditLogPort } from "@/domain/shared/audit-log";
 
 /**
  * Prisma-backed CommunityMembershipRepository.
@@ -13,7 +14,10 @@ import { createTransactionalRepository } from "@/infrastructure/prisma/_internal
  */
 export function createPrismaCommunityMembershipRepository(
   prisma: PrismaClient,
+  deps: { auditLog: AuditLogPort },
 ): CommunityMembershipRepository {
+  const { auditLog } = deps;
+
   function createUnitOfWork(tx: Prisma.TransactionClient): CommunityUnitOfWork {
     return {
       async findCommunityById(id) {
@@ -135,15 +139,13 @@ export function createPrismaCommunityMembershipRepository(
       },
 
       async createAuditLog(input) {
-        await tx.auditLog.create({
-          data: {
-            communityId: input.communityId,
-            actorId: input.actorId,
-            action: input.action,
-            entityType: input.entityType,
-            entityId: input.entityId,
-            metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
-          },
+        await auditLog.record({
+          communityId: input.communityId,
+          actorId: input.actorId,
+          action: input.action,
+          entityType: input.entityType,
+          entityId: input.entityId,
+          metadata: input.metadata,
         });
       },
     };

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuthenticatedUser } from "@/lib/api/auth-prelude";
 import { CommunityMemberRole } from "@/generated/prisma/enums";
 import { createPrismaCommunityMembershipRepository } from "@/infrastructure/prisma/community-membership-repository";
+import { createPrismaAuditLogAdapter } from "@/infrastructure/prisma/audit-log-adapter";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { approveCommunityMember } from "@/domain/community/membership/approve-community-member";
 
@@ -32,7 +33,8 @@ export async function PATCH(
 
     // 4. Execute domain service
     const { communityId, memberId } = await params;
-    const repository = createPrismaCommunityMembershipRepository(auth.prisma);
+    const auditLog = createPrismaAuditLogAdapter(auth.prisma);
+    const repository = createPrismaCommunityMembershipRepository(auth.prisma, { auditLog });
 
     const result = await approveCommunityMember(
       {

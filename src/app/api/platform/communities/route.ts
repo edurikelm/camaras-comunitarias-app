@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePlatformAdmin } from "@/lib/api/auth-prelude";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { createPrismaPlatformCommunityRepository } from "@/infrastructure/prisma/platform-community-repository";
+import { createPrismaAuditLogAdapter } from "@/infrastructure/prisma/audit-log-adapter";
 import { createCommunityWithFirstAdmin } from "@/domain/platform/create-community-with-first-admin";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +50,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Execute domain service
-    const repository = createPrismaPlatformCommunityRepository(auth.prisma);
+    const auditLog = createPrismaAuditLogAdapter(auth.prisma);
+    const repository = createPrismaPlatformCommunityRepository(auth.prisma, { auditLog });
 
     const result = await createCommunityWithFirstAdmin(
       {

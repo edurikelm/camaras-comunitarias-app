@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireAuthenticatedUser } from "@/lib/api/auth-prelude";
 import { createPrismaCommunityMembershipRepository } from "@/infrastructure/prisma/community-membership-repository";
+import { createPrismaAuditLogAdapter } from "@/infrastructure/prisma/audit-log-adapter";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { requestCommunityMembership } from "@/domain/community/membership/request-community-membership";
 
@@ -27,7 +28,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Execute domain service
-    const repository = createPrismaCommunityMembershipRepository(auth.prisma);
+    const auditLog = createPrismaAuditLogAdapter(auth.prisma);
+    const repository = createPrismaCommunityMembershipRepository(auth.prisma, { auditLog });
 
     const result = await requestCommunityMembership(
       {

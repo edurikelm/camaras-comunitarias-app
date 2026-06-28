@@ -4,6 +4,7 @@ import type {
   PlatformCommunityUnitOfWork,
 } from "@/domain/platform/create-community-with-first-admin";
 import { createTransactionalRepository } from "@/infrastructure/prisma/_internal/create-transactional-repository";
+import type { AuditLogPort } from "@/domain/shared/audit-log";
 
 /**
  * Creates a Prisma-backed PlatformCommunityRepository.
@@ -17,7 +18,10 @@ import { createTransactionalRepository } from "@/infrastructure/prisma/_internal
  */
 export function createPrismaPlatformCommunityRepository(
   prisma: PrismaClient,
+  deps: { auditLog: AuditLogPort },
 ): PlatformCommunityRepository {
+  const { auditLog } = deps;
+
   function createUnitOfWork(tx: Prisma.TransactionClient): PlatformCommunityUnitOfWork {
     return {
       async createCommunity(input) {
@@ -77,15 +81,13 @@ export function createPrismaPlatformCommunityRepository(
       },
 
       async createAuditLog(input) {
-        await tx.auditLog.create({
-          data: {
-            communityId: input.communityId,
-            actorId: input.actorId,
-            action: input.action,
-            entityType: input.entityType,
-            entityId: input.entityId,
-            metadata: input.metadata as Prisma.InputJsonValue,
-          },
+        await auditLog.record({
+          communityId: input.communityId,
+          actorId: input.actorId,
+          action: input.action,
+          entityType: input.entityType,
+          entityId: input.entityId,
+          metadata: input.metadata,
         });
       },
     };

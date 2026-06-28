@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireAuthenticatedUser } from "@/lib/api/auth-prelude";
 import { createPrismaRecordingRequestRepository } from "@/infrastructure/prisma/recording-request-repository";
+import { createPrismaAuditLogAdapter } from "@/infrastructure/prisma/audit-log-adapter";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { createRecordingRequest } from "@/domain/community/recording/create-recording-request";
 
@@ -83,8 +84,9 @@ export async function POST(
 
     // 4. Execute domain service
     const { incidentId } = await params;
+    const auditLog = createPrismaAuditLogAdapter(auth.prisma);
     const recordingRequestRepository =
-      createPrismaRecordingRequestRepository(auth.prisma);
+      createPrismaRecordingRequestRepository(auth.prisma, { auditLog });
 
     const result = await createRecordingRequest(
       {

@@ -11,6 +11,7 @@ import type {
   CreateAuditLogInput,
 } from "@/domain/community/incident/incident-repository";
 import { createTransactionalRepository } from "@/infrastructure/prisma/_internal/create-transactional-repository";
+import type { AuditLogPort } from "@/domain/shared/audit-log";
 
 /**
  * Prisma-backed IncidentRepository.
@@ -19,7 +20,10 @@ import { createTransactionalRepository } from "@/infrastructure/prisma/_internal
  */
 export function createPrismaIncidentRepository(
   prisma: PrismaClient,
+  deps: { auditLog: AuditLogPort },
 ): IncidentRepository {
+  const { auditLog } = deps;
+
   function createUnitOfWork(
     tx: Prisma.TransactionClient,
   ): IncidentRepository {
@@ -141,15 +145,13 @@ export function createPrismaIncidentRepository(
       },
 
       async createAuditLog(input: CreateAuditLogInput) {
-        await tx.auditLog.create({
-          data: {
-            communityId: input.communityId,
-            actorId: input.actorId,
-            action: input.action,
-            entityType: input.entityType,
-            entityId: input.entityId,
-            metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
-          },
+        await auditLog.record({
+          communityId: input.communityId,
+          actorId: input.actorId,
+          action: input.action,
+          entityType: input.entityType,
+          entityId: input.entityId,
+          metadata: input.metadata,
         });
       },
 
