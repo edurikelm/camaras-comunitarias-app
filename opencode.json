@@ -18,7 +18,7 @@
   },
   "agent": {
     "camaras-orchestrator": {
-      "model": "openai/gpt-5.5",
+      "model": "minimax-coding-plan/MiniMax-M3",
       "mode": "primary",
       "description": "Agente principal de Camaras Comunitarias. Aplica automaticamente CONTEXT.md, AGENTS.md y los workflows Matt Pocock."
     },
@@ -28,22 +28,22 @@
       "description": "Explora el codebase de Camaras Comunitarias y resume archivos, flujos, patrones y riesgos antes de implementar."
     },
     "architect": {
-      "model": "opencode/nemotron-3-ultra-free",
+      "model": "minimax-coding-plan/MiniMax-M3",
       "mode": "subagent",
       "description": "Evalua arquitectura de Camaras Comunitarias, limites de dominio, acoplamiento, modulos profundos y deuda tecnica."
     },
     "implementer": {
-      "model": "opencode/deepseek-v4-flash-free",
+      "model": "minimax-coding-plan/MiniMax-M2.7-highspeed",
       "mode": "subagent",
       "description": "Implementa cambios concretos en Camaras Comunitarias una vez que el plan esta claro."
     },
     "tester": {
-      "model": "opencode/deepseek-v4-flash-free",
+      "model": "minimax-coding-plan/MiniMax-M2.7-highspeed",
       "mode": "subagent",
       "description": "Disena y ejecuta validaciones para Camaras Comunitarias, priorizando auth, permisos, privacidad, evidencia y alertas."
     },
     "reviewer": {
-      "model": "opencode/deepseek-v4-flash-free",
+      "model": "minimax-coding-plan/MiniMax-M2.7",
       "mode": "subagent",
       "description": "Revisa cambios de Camaras Comunitarias buscando bugs, regresiones, edge cases y tests faltantes."
     },
