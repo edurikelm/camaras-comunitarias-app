@@ -10,6 +10,7 @@ import {
   CommunityAuthorizationError,
   CommunityInvariantError,
 } from "@/domain/community/errors";
+import { isUuid } from "@/domain/shared/validators";
 
 /**
  * Platform-scoped authorization failure (actor lacks PLATFORM_ADMIN role).
@@ -126,12 +127,7 @@ export type CreateCommunityWithFirstAdminDeps = {
   repository: PlatformCommunityRepository;
 };
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function isUuid(value: string) {
-  return UUID_REGEX.test(value);
-}
 
 function isEmail(value: string) {
   return EMAIL_REGEX.test(value);

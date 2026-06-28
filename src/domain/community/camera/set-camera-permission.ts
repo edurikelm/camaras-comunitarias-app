@@ -10,6 +10,7 @@ import {
 } from "@/domain/community/errors";
 import type { CameraRepository } from "./camera-repository";
 import { isValidHHMM } from "./schedule";
+import { isUuid } from "@/domain/shared/validators";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -97,8 +98,7 @@ export async function setCameraPermission(
 
   // Optionally validate userId is a UUID format if present
   if (hasUserId && input.permission.userId) {
-    const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!UUID_REGEX.test(input.permission.userId.trim())) {
+    if (!isUuid(input.permission.userId.trim())) {
       throw new CommunityInvariantError("userId must be a valid UUID");
     }
   }

@@ -5,6 +5,7 @@ import { getPrisma } from "@/lib/prisma";
 import { createPrismaCameraRepository } from "@/infrastructure/prisma/camera-repository";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { registerCommunityCamera } from "@/domain/community/camera/register-community-camera";
+import { isRtspUrl } from "@/domain/shared/validators";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +57,7 @@ export async function POST(
       );
     }
 
-    if (!/^rtsp:\/\//i.test(body.rtspUrl.trim())) {
+    if (!isRtspUrl(body.rtspUrl)) {
       return NextResponse.json(
         { error: "rtspUrl must start with rtsp://" },
         { status: 400 },

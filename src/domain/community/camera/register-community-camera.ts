@@ -5,6 +5,7 @@ import {
   CommunityNotFoundError,
 } from "@/domain/community/errors";
 import type { CameraRepository } from "./camera-repository";
+import { isRtspUrl } from "@/domain/shared/validators";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -47,8 +48,6 @@ export type RegisterCameraDeps = {
 // Service
 // ---------------------------------------------------------------------------
 
-const RTSP_REGEX = /^rtsp:\/\/[^\s\/]+(\/[^\s]*)?(\?[^\s]*)?$/i;
-
 export async function registerCommunityCamera(
   input: RegisterCameraInput,
   { cameraRepository }: RegisterCameraDeps,
@@ -64,7 +63,7 @@ export async function registerCommunityCamera(
   }
 
   const rtspUrl = input.rtspUrl.trim();
-  if (!rtspUrl || !RTSP_REGEX.test(rtspUrl)) {
+  if (!isRtspUrl(rtspUrl)) {
     throw new CommunityInvariantError(
       "A valid RTSP URL starting with rtsp:// is required",
     );
