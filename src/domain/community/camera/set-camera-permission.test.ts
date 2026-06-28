@@ -334,7 +334,7 @@ describe("setCameraPermission", () => {
     expect(repository.createAuditLog).not.toHaveBeenCalled();
   });
 
-  it("rechaza si scheduleEnd <= scheduleStart", async () => {
+  it("rechaza si scheduleStart === scheduleEnd (ventana cero o ambigua)", async () => {
     const repository = createRepository();
 
     await expect(
@@ -345,16 +345,76 @@ describe("setCameraPermission", () => {
             role: CommunityMemberRole.GUARD,
             canViewLive: true,
             canRequestRecordings: false,
-            scheduleStart: "17:00",
+            scheduleStart: "09:00",
             scheduleEnd: "09:00",
           },
         },
         { cameraRepository: repository },
       ),
-    ).rejects.toThrow("scheduleEnd must be greater than scheduleStart");
+    ).rejects.toThrow(
+      "scheduleStart and scheduleEnd must differ (use start > end for overnight ranges)",
+    );
 
     expect(repository.upsertCameraPermission).not.toHaveBeenCalled();
     expect(repository.createAuditLog).not.toHaveBeenCalled();
+  });
+
+  it("acepta rango overnight valido (scheduleStart > scheduleEnd cruza medianoche)", async () => {
+    const repository = createRepository();
+
+    await expect(
+      setCameraPermission(
+        {
+          ...validInput,
+          permission: {
+            role: CommunityMemberRole.GUARD,
+            canViewLive: true,
+            canRequestRecordings: false,
+            scheduleStart: "22:00",
+            scheduleEnd: "06:00",
+          },
+        },
+        { cameraRepository: repository },
+      ),
+    ).resolves.toMatchObject({
+      permission: {
+        scheduleStart: "22:00",
+        scheduleEnd: "06:00",
+      },
+    });
+
+    expect(repository.upsertCameraPermission).toHaveBeenCalledTimes(1);
+    expect(repository.createAuditLog).toHaveBeenCalledTimes(1);
+  });
+
+  it("acepta rango normal del mismo dia (scheduleStart < scheduleEnd)", async () => {
+    // Caso ya cubierto por el test "crea un permiso con horario valido" arriba
+    // con scheduleStart="09:00" y scheduleEnd="17:00". Este test documenta
+    // explicitamente que esa configuracion sigue siendo valida tras el fix.
+    const repository = createRepository();
+
+    await expect(
+      setCameraPermission(
+        {
+          ...validInput,
+          permission: {
+            role: CommunityMemberRole.GUARD,
+            canViewLive: true,
+            canRequestRecordings: false,
+            scheduleStart: "09:00",
+            scheduleEnd: "17:00",
+          },
+        },
+        { cameraRepository: repository },
+      ),
+    ).resolves.toMatchObject({
+      permission: {
+        scheduleStart: "09:00",
+        scheduleEnd: "17:00",
+      },
+    });
+
+    expect(repository.upsertCameraPermission).toHaveBeenCalledTimes(1);
   });
 
   it("rechaza scheduleStart con formato invalido", async () => {

@@ -106,7 +106,8 @@ Actualiza este documento cuando una regla durable cambie o se descubra durante e
 - Un permiso por rol (o usuario) es unico por camara: si ya existe, se actualiza al crear.
 - Un permiso tiene dos booleanos independientes: canViewLive y canRequestRecordings.
 - Un permiso puede tener horario: scheduleStart y scheduleEnd en formato HH:MM.
-- scheduleEnd debe ser mayor a scheduleStart si ambos existen.
+- scheduleStart y scheduleEnd deben ser distintos si ambos existen: `scheduleStart === scheduleEnd` es invalido porque representa una ventana cero o ambigua.
+- Si `scheduleStart < scheduleEnd` se interpreta como rango del mismo dia; si `scheduleStart > scheduleEnd` se interpreta como rango que cruza medianoche (caso nocturno valido, por ejemplo 22:00-06:00 para camaras de seguridad).
 - Solo camaras ACTIVE pueden tener permisos configurados.
 - Los permisos para camaras PENDING_REVIEW, INACTIVE, PRIVATE o REJECTED no tienen efecto.
 - Un permiso por rol se elimina al asignar el rol a un miembro; un permiso por usuario permanece aunque cambie su rol.
@@ -136,7 +137,7 @@ Actualiza este documento cuando una regla durable cambie o se descubra durante e
 
 - Para ver un stream en vivo, el usuario debe tener un permiso vigente: por rol, por usuario, o ser ADMIN de la comunidad.
 - El horario del permiso (scheduleStart/scheduleEnd) se verifica contra la hora actual HH:MM.
-- Si scheduleStart > scheduleEnd lexicograficamente, se interpreta como rango que cruza medianoche: se permite si hora actual >= scheduleStart O <= scheduleEnd.
+- Si `scheduleStart > scheduleEnd` se interpreta como rango que cruza medianoche: se permite si hora actual >= scheduleStart O <= scheduleEnd. Este rango es valido al crear el permiso.
 - Solo camaras en estado ACTIVE pueden emitir streams.
 - La API de live view devuelve un token JWT con cameraId, userId y expiresAt (1 hora).
 - El token se firma con CAMERA_STREAM_SECRET y se valida en MediaMTX.

@@ -119,9 +119,9 @@ export async function setCameraPermission(
       "scheduleEnd must be in HH:MM format",
     );
   }
-  if (scheduleStart && scheduleEnd && scheduleEnd <= scheduleStart) {
+  if (scheduleStart && scheduleEnd && scheduleStart === scheduleEnd) {
     throw new CommunityInvariantError(
-      "scheduleEnd must be greater than scheduleStart",
+      "scheduleStart and scheduleEnd must differ (use start > end for overnight ranges)",
     );
   }
 
