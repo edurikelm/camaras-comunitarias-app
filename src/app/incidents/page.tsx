@@ -1,11 +1,19 @@
-import { AlertTriangleIcon, BellRingIcon, ClockIcon, ImageIcon, PlusIcon } from "lucide-react";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getPrisma } from "@/lib/prisma";
+import { redirect } from "next/navigation";
+import {
+  AlertTriangleIcon,
+  BellRingIcon,
+  ClockIcon,
+  ImageIcon,
+} from "lucide-react";
 
+import { CreateIncidentDialog } from "@/components/incidents/create-incident-dialog";
 import { DomainEmptyState } from "@/components/domain/empty-state";
 import { NoPermissionState } from "@/components/domain/no-permission-state";
 import { RouteShell } from "@/components/domain/route-shell";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -14,9 +22,124 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-const incidentStatuses = ["OPEN", "REVIEWING", "CLOSED"];
+const incidentStatusLabels: Record<string, string> = {
+  OPEN: "Abierto",
+  REVIEWING: "En revision",
+  CLOSED: "Cerrado",
+};
 
-export default function IncidentsPage() {
+const severityVariant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  CRITICAL: "destructive",
+  HIGH: "default",
+  MEDIUM: "secondary",
+  LOW: "outline",
+};
+
+const typeLabels: Record<string, string> = {
+  THEFT: "Robo",
+  SUSPICIOUS_PERSON: "Persona sospechosa",
+  SUSPICIOUS_VEHICLE: "Vehículo sospechoso",
+  EMERGENCY: "Emergencia",
+  ACCIDENT: "Accidente",
+  OTHER: "Otro",
+};
+
+async function getMembership() {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { kind: "no-session" as const };
+  }
+
+  const prisma = getPrisma();
+
+  const dbUser = await prisma.user.findUnique({
+    where: { authProviderId: user.id },
+    select: { id: true },
+  });
+
+  if (!dbUser) {
+    return { kind: "no-db-user" as const };
+  }
+
+  const membership = await prisma.communityMember.findUnique({
+    where: { userId: dbUser.id },
+    select: {
+      communityId: true,
+      role: true,
+      status: true,
+    },
+  });
+
+  if (!membership) {
+    return { kind: "no-membership" as const };
+  }
+
+  return { kind: "ok" as const, membership, userId: dbUser.id };
+}
+
+export default async function IncidentsPage() {
+  const session = await getMembership();
+
+  if (session.kind === "no-session") {
+    redirect("/login");
+  }
+
+  if (session.kind === "no-db-user" || session.kind === "no-membership") {
+    return (
+      <RouteShell
+        badge="Sin membresia"
+        title="Incidentes, alertas y evidencia"
+        description="Reporte rapido con severidad sugerida, evidencia restringida y solicitudes de grabacion manuales."
+        activeHref="/incidents"
+      >
+        <NoPermissionState
+          title="Membresia requerida"
+          description="Necesitas ser miembro activo de una comunidad para acceder a los incidentes."
+        />
+      </RouteShell>
+    );
+  }
+
+  if (session.membership.status !== "ACTIVE") {
+    return (
+      <RouteShell
+        badge="Membresia pendiente"
+        title="Incidentes, alertas y evidencia"
+        description="Reporte rapido con severidad sugerida, evidencia restringida y solicitudes de grabacion manuales."
+        activeHref="/incidents"
+      >
+        <NoPermissionState
+          title="Membresia no activa"
+          description="Tu membresia debe estar ACTIVE para ver o crear incidentes."
+        />
+      </RouteShell>
+    );
+  }
+
+  // ACTIVE — fetch data
+  const prisma = getPrisma();
+  const communityId = session.membership.communityId;
+
+  const [incidents, sectors] = await Promise.all([
+    prisma.incident.findMany({
+      where: { communityId },
+      include: {
+        createdBy: { select: { name: true, email: true } },
+        sector: { select: { name: true } },
+        _count: { select: { evidence: true, comments: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.communitySector.findMany({
+      where: { communityId },
+      orderBy: { name: "asc" },
+    }),
+  ]);
+
   return (
     <RouteShell
       badge="Incidentes y SOS"
@@ -24,72 +147,123 @@ export default function IncidentsPage() {
       description="Reporte rapido con severidad sugerida, evidencia restringida y solicitudes de grabacion manuales."
       activeHref="/incidents"
       action={
-        <Button disabled>
-          <PlusIcon data-icon="inline-start" />
-          Proximamente: crear incidente
-        </Button>
+        <CreateIncidentDialog
+          communityId={communityId}
+          sectors={sectors.map((s) => ({ id: s.id, name: s.name }))}
+        />
       }
     >
       <Alert variant="destructive">
         <AlertTriangleIcon />
         <AlertTitle>SOS no cambia permisos de camara</AlertTitle>
         <AlertDescription>
-          En el MVP, un SOS genera alerta CRITICAL y coordinacion, pero no abre camaras cercanas automaticamente.
+          En el MVP, un SOS genera alerta CRITICAL y coordinacion, pero no abre
+          camaras cercanas automaticamente.
         </AlertDescription>
       </Alert>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {incidentStatuses.map((status) => (
-          <Card key={status}>
+      {incidents.length === 0 ? (
+        <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+          <DomainEmptyState
+            icon={<BellRingIcon />}
+            title="No hay incidentes reportados"
+            description="Cuando un vecino reporte un evento, se sugerira severidad y se notificara segun sector comunitario y rol."
+            action="Reportar incidente"
+          />
+
+          <Card>
             <CardHeader>
-              <CardDescription>Estado</CardDescription>
-              <CardTitle>{status}</CardTitle>
+              <CardTitle>Solicitud de grabacion</CardTitle>
+              <CardDescription>
+                Flujo manual asociado a incidente, camara y dueno.
+              </CardDescription>
             </CardHeader>
-            <CardContent className="text-sm leading-6 text-muted-foreground">
-              {status === "CLOSED"
-                ? "No admite nuevas solicitudes por defecto; reapertura solo ADMIN/GUARD con motivo."
-                : "Permite seguimiento operativo segun rol y permisos."}
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex items-start gap-3 rounded-lg border p-3">
+                <ClockIcon data-icon="inline-start" />
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Maximo 30 minutos por solicitud; no se permite solicitar un
+                  dia completo.
+                </p>
+              </div>
+              <div className="flex items-start gap-3 rounded-lg border p-3">
+                <ImageIcon data-icon="inline-start" />
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Evidencia MVP: imagenes y metadata. Vecinos notificados ven
+                  resumen, no evidencia completa por defecto.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline">PENDING</Badge>
+                <Badge variant="outline">ACCEPTED</Badge>
+                <Badge variant="outline">REJECTED</Badge>
+              </div>
             </CardContent>
           </Card>
-        ))}
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-        <DomainEmptyState
-          icon={<BellRingIcon />}
-          title="No hay incidentes abiertos"
-          description="Cuando un vecino reporte un evento, se sugerira severidad y se notificara segun sector comunitario y rol."
-          action="Reportar incidente"
-        />
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Solicitud de grabacion</CardTitle>
-            <CardDescription>
-              Flujo manual asociado a incidente, camara y dueno.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="flex items-start gap-3 rounded-lg border p-3">
-              <ClockIcon data-icon="inline-start" />
-              <p className="text-sm leading-6 text-muted-foreground">
-                Maximo 30 minutos por solicitud; no se permite solicitar un dia completo.
-              </p>
-            </div>
-            <div className="flex items-start gap-3 rounded-lg border p-3">
-              <ImageIcon data-icon="inline-start" />
-              <p className="text-sm leading-6 text-muted-foreground">
-                Evidencia MVP: imagenes y metadata. Vecinos notificados ven resumen, no evidencia completa por defecto.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="outline">PENDING</Badge>
-              <Badge variant="outline">ACCEPTED</Badge>
-              <Badge variant="outline">REJECTED</Badge>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {incidents.map((incident) => (
+            <Card key={incident.id}>
+              <CardHeader>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col gap-1">
+                    <CardTitle className="text-lg">
+                      {typeLabels[incident.type] ?? incident.type}
+                    </CardTitle>
+                    <CardDescription>
+                      {incident.createdBy.name ?? incident.createdBy.email}
+                      {incident.sector
+                        ? ` · ${incident.sector.name}`
+                        : null}
+                      {incident.location
+                        ? ` · ${incident.location}`
+                        : null}
+                    </CardDescription>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Badge
+                      variant={
+                        severityVariant[incident.severity] ?? "secondary"
+                      }
+                    >
+                      {incident.severity}
+                    </Badge>
+                    <Badge variant="outline">
+                      {incidentStatusLabels[incident.status] ??
+                        incident.status}
+                    </Badge>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {incident.description}
+                </p>
+                <div className="flex gap-3 text-xs text-muted-foreground">
+                  <span>
+                    {incident._count.evidence} evidencia
+                    {incident._count.evidence !== 1 ? "s" : ""}
+                  </span>
+                  <span>
+                    {incident._count.comments} comentario
+                    {incident._count.comments !== 1 ? "s" : ""}
+                  </span>
+                  <span>
+                    {new Date(incident.createdAt).toLocaleString("es-CL", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <NoPermissionState description="La visibilidad de evidencia esta restringida al creador, administradores y guardias autorizados." />
     </RouteShell>

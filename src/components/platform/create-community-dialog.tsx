@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2Icon, PlusIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,7 @@ type CreateCommunityFormValues = z.infer<typeof createCommunitySchema>;
 // ---------------------------------------------------------------------------
 
 export function CreateCommunityDialog() {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [submitState, setSubmitState] = useState<
     | { status: "idle" }
@@ -133,6 +135,7 @@ export function CreateCommunityDialog() {
 
         successTimeoutRef.current = setTimeout(() => {
           setOpen(false);
+          router.refresh();
           resetFormAndState();
         }, 1500);
       } catch (error) {
