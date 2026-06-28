@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireAuthenticatedUser } from "@/lib/api/auth-prelude";
 import { createPrismaCameraRepository } from "@/infrastructure/prisma/camera-repository";
+import { createPrismaAuditLogAdapter } from "@/infrastructure/prisma/audit-log-adapter";
+import { createRtspCipherFromEnv } from "@/infrastructure/security";
 import { createLiveStreamTokenIssuerFromEnv } from "@/infrastructure/streaming";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { requestLiveViewToken } from "@/domain/community/camera/request-live-view-token";
@@ -18,7 +20,9 @@ export async function GET(
   try {
     // 3. Execute domain service
     const { cameraId } = await params;
-    const cameraRepository = createPrismaCameraRepository(auth.prisma);
+    const rtspCipher = createRtspCipherFromEnv();
+    const auditLog = createPrismaAuditLogAdapter(auth.prisma);
+    const cameraRepository = createPrismaCameraRepository(auth.prisma, { rtspCipher, auditLog });
 
     const result = await requestLiveViewToken(
       {

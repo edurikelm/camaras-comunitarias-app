@@ -1,4 +1,3 @@
-import { randomBytes, createCipheriv, createHash } from "node:crypto";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { CameraRepository } from "@/domain/community/camera/camera-repository";
 import type {
@@ -12,49 +11,10 @@ import type {
   AuditLogInput,
   UpsertCameraPermissionInput,
 } from "@/domain/community/camera/camera-repository";
+import type { RtspCipherPort } from "@/domain/community/camera/rtsp-cipher";
 import { CameraStatus } from "@/generated/prisma/enums";
 import { createTransactionalRepository } from "@/infrastructure/prisma/_internal/create-transactional-repository";
-
-// ---------------------------------------------------------------------------
-// RTSP encryption helpers
-// ---------------------------------------------------------------------------
-
-const AES_ALGORITHM = "aes-256-gcm";
-const IV_LENGTH = 16;
-
-function getEncryptionKey(): Buffer {
-  const secret = process.env.CAMERA_RTSP_SECRET;
-  if (!secret) {
-    throw new Error(
-      "CAMERA_RTSP_SECRET environment variable is required for RTSP encryption",
-    );
-  }
-  return createHash("sha256").update(secret).digest();
-}
-
-/**
- * Encrypts a plaintext RTSP URL using AES-256-GCM.
- * Returns a string in the format `iv:authTag:ciphertext` (all hex).
- */
-function encryptRTSP(plaintext: string): string {
-  const key = getEncryptionKey();
-  const iv = randomBytes(IV_LENGTH);
-  const cipher = createCipheriv(AES_ALGORITHM, key, iv);
-
-  let encrypted = cipher.update(plaintext, "utf8", "hex");
-  encrypted += cipher.final("hex");
-
-  const authTag = cipher.getAuthTag().toString("hex");
-
-  return `${iv.toString("hex")}:${authTag}:${encrypted}`;
-}
-
-/**
- * Hashes a stream key using SHA-256.
- */
-function hashStreamKey(key: string): string {
-  return createHash("sha256").update(key).digest("hex");
-}
+import type { AuditLogPort } from "@/domain/shared/audit-log";
 
 // ---------------------------------------------------------------------------
 // CameraRecord mapping
@@ -118,7 +78,10 @@ function toCameraPermissionRecord(row: {
 
 export function createPrismaCameraRepository(
   prisma: PrismaClient,
+  deps: { rtspCipher: RtspCipherPort; auditLog: AuditLogPort },
 ): CameraRepository {
+  const { rtspCipher, auditLog } = deps;
+
   function createUnitOfWork(
     tx: Prisma.TransactionClient,
   ): CameraRepository {
@@ -189,9 +152,9 @@ export function createPrismaCameraRepository(
       // -----------------------------------------------------------------------
 
       async createCamera(input: CreateCameraInput) {
-        const rtspUrlEncrypted = encryptRTSP(input.rtspUrl);
+        const rtspUrlEncrypted = rtspCipher.encryptRtspUrl(input.rtspUrl);
         const streamKeyHash = input.streamKey
-          ? hashStreamKey(input.streamKey)
+          ? rtspCipher.hashStreamKey(input.streamKey)
           : null;
 
         const row = await tx.camera.create({
@@ -316,15 +279,13 @@ export function createPrismaCameraRepository(
       },
 
       async createAuditLog(input: AuditLogInput) {
-        await tx.auditLog.create({
-          data: {
-            communityId: input.communityId,
-            actorId: input.actorId,
-            action: input.action,
-            entityType: input.entityType,
-            entityId: input.entityId,
-            metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
-          },
+        await auditLog.record({
+          communityId: input.communityId,
+          actorId: input.actorId,
+          action: input.action,
+          entityType: input.entityType,
+          entityId: input.entityId,
+          metadata: input.metadata,
         });
       },
 

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireAuthenticatedUser } from "@/lib/api/auth-prelude";
 import { createPrismaCameraRepository } from "@/infrastructure/prisma/camera-repository";
+import { createPrismaAuditLogAdapter } from "@/infrastructure/prisma/audit-log-adapter";
+import { createRtspCipherFromEnv } from "@/infrastructure/security";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { setCameraPermission } from "@/domain/community/camera/set-camera-permission";
 import type { CommunityMemberRole } from "@/generated/prisma/enums";
@@ -48,7 +50,9 @@ export async function POST(
 
     // 4. Execute domain service
     const { communityId, cameraId } = await params;
-    const cameraRepository = createPrismaCameraRepository(auth.prisma);
+    const rtspCipher = createRtspCipherFromEnv();
+    const auditLog = createPrismaAuditLogAdapter(auth.prisma);
+    const cameraRepository = createPrismaCameraRepository(auth.prisma, { rtspCipher, auditLog });
 
     const result = await setCameraPermission(
       {

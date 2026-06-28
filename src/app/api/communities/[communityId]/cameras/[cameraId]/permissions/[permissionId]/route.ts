@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireAuthenticatedUser } from "@/lib/api/auth-prelude";
 import { createPrismaCameraRepository } from "@/infrastructure/prisma/camera-repository";
+import { createPrismaAuditLogAdapter } from "@/infrastructure/prisma/audit-log-adapter";
+import { createRtspCipherFromEnv } from "@/infrastructure/security";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { removeCameraPermission } from "@/domain/community/camera/remove-camera-permission";
 
@@ -25,7 +27,9 @@ export async function DELETE(
   try {
     // 3. Execute domain service
     const { communityId, cameraId, permissionId } = await params;
-    const cameraRepository = createPrismaCameraRepository(auth.prisma);
+    const rtspCipher = createRtspCipherFromEnv();
+    const auditLog = createPrismaAuditLogAdapter(auth.prisma);
+    const cameraRepository = createPrismaCameraRepository(auth.prisma, { rtspCipher, auditLog });
 
     const result = await removeCameraPermission(
       {
