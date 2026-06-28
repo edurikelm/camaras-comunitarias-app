@@ -4,7 +4,7 @@ import { requireAuthenticatedUser } from "@/lib/api/auth-prelude";
 import { createPrismaCameraRepository } from "@/infrastructure/prisma/camera-repository";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { registerCommunityCamera } from "@/domain/community/camera/register-community-camera";
-import { isRtspUrl } from "@/domain/shared/validators";
+import { isRtspUrl, isUuid } from "@/domain/shared/validators";
 
 export const dynamic = "force-dynamic";
 
@@ -52,9 +52,7 @@ export async function POST(
     if (
       body.sectorId !== undefined &&
       body.sectorId !== null &&
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-        body.sectorId,
-      )
+      !isUuid(body.sectorId)
     ) {
       return NextResponse.json(
         { error: "sectorId must be a valid UUID" },
