@@ -3,6 +3,7 @@ import type {
   PlatformCommunityRepository,
   PlatformCommunityUnitOfWork,
 } from "@/domain/platform/create-community-with-first-admin";
+import { createTransactionalRepository } from "@/infrastructure/prisma/_internal/create-transactional-repository";
 
 /**
  * Creates a Prisma-backed PlatformCommunityRepository.
@@ -90,18 +91,8 @@ export function createPrismaPlatformCommunityRepository(
     };
   }
 
-  const directUow = createUnitOfWork(prisma);
-
-  return {
-    ...directUow,
-
-    runInTransaction<T>(
-      operation: (uow: PlatformCommunityUnitOfWork) => Promise<T>,
-    ): Promise<T> {
-      return prisma.$transaction(async (tx) => {
-        const scopedUow = createUnitOfWork(tx);
-        return operation(scopedUow);
-      });
-    },
-  };
+  return createTransactionalRepository<
+    PlatformCommunityRepository,
+    PlatformCommunityUnitOfWork
+  >(prisma, createUnitOfWork);
 }

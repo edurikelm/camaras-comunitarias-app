@@ -10,6 +10,7 @@ import type {
   CreateAlertInsert,
   CreateAuditLogInput,
 } from "@/domain/community/incident/incident-repository";
+import { createTransactionalRepository } from "@/infrastructure/prisma/_internal/create-transactional-repository";
 
 /**
  * Prisma-backed IncidentRepository.
@@ -166,18 +167,8 @@ export function createPrismaIncidentRepository(
     };
   }
 
-  const directUow = createUnitOfWork(prisma);
-
-  return {
-    ...directUow,
-
-    runInTransaction<T>(
-      operation: (uow: IncidentRepository) => Promise<T>,
-    ): Promise<T> {
-      return prisma.$transaction(async (tx) => {
-        const scopedUow = createUnitOfWork(tx);
-        return operation(scopedUow);
-      });
-    },
-  };
+  return createTransactionalRepository<IncidentRepository, IncidentRepository>(
+    prisma,
+    createUnitOfWork,
+  );
 }

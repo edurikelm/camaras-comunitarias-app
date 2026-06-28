@@ -13,6 +13,7 @@ import type {
   UpsertCameraPermissionInput,
 } from "@/domain/community/camera/camera-repository";
 import { CameraStatus } from "@/generated/prisma/enums";
+import { createTransactionalRepository } from "@/infrastructure/prisma/_internal/create-transactional-repository";
 
 // ---------------------------------------------------------------------------
 // RTSP encryption helpers
@@ -461,18 +462,8 @@ export function createPrismaCameraRepository(
     };
   }
 
-  const directUow = createUnitOfWork(prisma);
-
-  return {
-    ...directUow,
-
-    runInTransaction<T>(
-      operation: (uow: CameraRepository) => Promise<T>,
-    ): Promise<T> {
-      return prisma.$transaction(async (tx) => {
-        const scopedUow = createUnitOfWork(tx);
-        return operation(scopedUow);
-      });
-    },
-  };
+  return createTransactionalRepository<CameraRepository, CameraRepository>(
+    prisma,
+    createUnitOfWork,
+  );
 }

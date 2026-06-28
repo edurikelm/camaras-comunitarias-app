@@ -4,6 +4,7 @@ import type {
   CommunityUnitOfWork,
 } from "@/domain/community/community-repository";
 import { CommunityMemberRole, CommunityMemberStatus } from "@/generated/prisma/enums";
+import { createTransactionalRepository } from "@/infrastructure/prisma/_internal/create-transactional-repository";
 
 /**
  * Prisma-backed CommunityMembershipRepository.
@@ -148,18 +149,8 @@ export function createPrismaCommunityMembershipRepository(
     };
   }
 
-  const directUow = createUnitOfWork(prisma);
-
-  return {
-    ...directUow,
-
-    runInTransaction<T>(
-      operation: (uow: CommunityUnitOfWork) => Promise<T>,
-    ): Promise<T> {
-      return prisma.$transaction(async (tx) => {
-        const scopedUow = createUnitOfWork(tx);
-        return operation(scopedUow);
-      });
-    },
-  };
+  return createTransactionalRepository<
+    CommunityMembershipRepository,
+    CommunityUnitOfWork
+  >(prisma, createUnitOfWork);
 }

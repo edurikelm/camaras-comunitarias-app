@@ -8,6 +8,7 @@ import type {
   CreateEvidenceInput,
   CreateAuditLogInput,
 } from "@/domain/community/evidence/evidence-repository";
+import { createTransactionalRepository } from "@/infrastructure/prisma/_internal/create-transactional-repository";
 
 /**
  * Prisma-backed EvidenceRepository.
@@ -167,18 +168,8 @@ export function createPrismaEvidenceRepository(
     };
   }
 
-  const directUow = createUnitOfWork(prisma);
-
-  return {
-    ...directUow,
-
-    runInTransaction<T>(
-      operation: (uow: EvidenceRepository) => Promise<T>,
-    ): Promise<T> {
-      return prisma.$transaction(async (tx) => {
-        const scopedUow = createUnitOfWork(tx);
-        return operation(scopedUow);
-      });
-    },
-  };
+  return createTransactionalRepository<EvidenceRepository, EvidenceRepository>(
+    prisma,
+    createUnitOfWork,
+  );
 }
