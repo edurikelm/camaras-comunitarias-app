@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { authenticateRequest } from "@/lib/auth";
-import { getPrisma } from "@/lib/prisma";
+import { requireAuthenticatedUser } from "@/lib/api/auth-prelude";
 import { createPrismaIncidentRepository } from "@/infrastructure/prisma/incident-repository";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { createIncident } from "@/domain/community/incident/create-incident";
@@ -20,24 +19,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ communityId: string }> },
 ) {
+  const auth = await requireAuthenticatedUser(request);
+  if (!auth.ok) return auth.response;
+
   try {
-    // 1. Authenticate
-    const authUser = await authenticateRequest(request);
-    if (!authUser) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // 2. Look up the platform user by authProviderId
-    const prisma = getPrisma();
-    const platformUser = await prisma.user.findUnique({
-      where: { authProviderId: authUser.id },
-      select: { id: true },
-    });
-
-    if (!platformUser) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
     // 3. Parse and validate body
     const body: RequestBody = await request.json();
 
@@ -78,11 +63,11 @@ export async function POST(
 
     // 4. Execute domain service
     const { communityId } = await params;
-    const incidentRepository = createPrismaIncidentRepository(prisma);
+    const incidentRepository = createPrismaIncidentRepository(auth.prisma);
 
     const result = await createIncident(
       {
-        actor: { id: platformUser.id },
+        actor: { id: auth.actor.id },
         communityId,
         incident: {
           type: body.type,

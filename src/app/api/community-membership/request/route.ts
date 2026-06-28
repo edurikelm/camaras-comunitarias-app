@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { authenticateRequest } from "@/lib/auth";
-import { getPrisma } from "@/lib/prisma";
+import { requireAuthenticatedUser } from "@/lib/api/auth-prelude";
 import { createPrismaCommunityMembershipRepository } from "@/infrastructure/prisma/community-membership-repository";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { requestCommunityMembership } from "@/domain/community/membership/request-community-membership";
@@ -13,24 +12,10 @@ type RequestBody = {
 };
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAuthenticatedUser(request);
+  if (!auth.ok) return auth.response;
+
   try {
-    // 1. Authenticate
-    const authUser = await authenticateRequest(request);
-    if (!authUser) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // 2. Look up the user by authProviderId
-    const prisma = getPrisma();
-    const platformUser = await prisma.user.findUnique({
-      where: { authProviderId: authUser.id },
-      select: { id: true },
-    });
-
-    if (!platformUser) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
     // 3. Parse request body
     const body: RequestBody = await request.json();
 
@@ -42,11 +27,11 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Execute domain service
-    const repository = createPrismaCommunityMembershipRepository(prisma);
+    const repository = createPrismaCommunityMembershipRepository(auth.prisma);
 
     const result = await requestCommunityMembership(
       {
-        userId: platformUser.id,
+        userId: auth.actor.id,
         code: body.code,
       },
       { repository },

@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { authenticateRequest } from "@/lib/auth";
-import { getPrisma } from "@/lib/prisma";
+import { requirePlatformAdmin } from "@/lib/api/auth-prelude";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
-import { PlatformRole } from "@/generated/prisma/enums";
 import { createPrismaPlatformCommunityRepository } from "@/infrastructure/prisma/platform-community-repository";
 import { createCommunityWithFirstAdmin } from "@/domain/platform/create-community-with-first-admin";
 
@@ -22,30 +20,10 @@ type RequestBody = {
 };
 
 export async function POST(request: NextRequest) {
+  const auth = await requirePlatformAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
-    // 1. Authenticate with Supabase (cookies or Bearer token)
-    const authUser = await authenticateRequest(request);
-    if (!authUser) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 },
-      );
-    }
-
-    // 2. Look up the platform user by authProviderId and check platform role
-    const prisma = getPrisma();
-    const platformUser = await prisma.user.findUnique({
-      where: { authProviderId: authUser.id },
-      select: { id: true, platformRole: true },
-    });
-
-    if (!platformUser || platformUser.platformRole !== PlatformRole.PLATFORM_ADMIN) {
-      return NextResponse.json(
-        { error: "Forbidden" },
-        { status: 403 },
-      );
-    }
-
     // 3. Parse and validate request body
     const body: RequestBody = await request.json();
 
@@ -71,13 +49,13 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Execute domain service
-    const repository = createPrismaPlatformCommunityRepository(prisma);
+    const repository = createPrismaPlatformCommunityRepository(auth.prisma);
 
     const result = await createCommunityWithFirstAdmin(
       {
         actor: {
-          id: platformUser.id,
-          platformRole: platformUser.platformRole,
+          id: auth.actor.id,
+          platformRole: auth.actor.platformRole,
         },
         community: {
           name: body.community.name,

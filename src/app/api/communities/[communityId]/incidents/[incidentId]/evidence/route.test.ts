@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   DomainError,
   type DomainErrorContext,
@@ -42,14 +42,15 @@ class MockNotFoundError extends MockInvariantError {
 // Hoisted mock factories — these run BEFORE imports due to vi.mock hoisting.
 // ---------------------------------------------------------------------------
 
-const { mockAuthenticateRequest } = vi.hoisted(() => ({
-  mockAuthenticateRequest: vi.fn<
-    (request: NextRequest) => Promise<{ id: string } | null>
+const { mockRequireAuthenticatedUser } = vi.hoisted(() => ({
+  mockRequireAuthenticatedUser: vi.fn<
+    (request: NextRequest) => Promise<{
+      ok: boolean;
+      actor?: { id: string };
+      response?: NextResponse;
+      prisma?: unknown;
+    }>
   >(),
-}));
-
-const { mockPrismaFindUnique } = vi.hoisted(() => ({
-  mockPrismaFindUnique: vi.fn(),
 }));
 
 const { mockCreateSupabaseEvidenceStorageFromEnv } = vi.hoisted(() => ({
@@ -79,14 +80,8 @@ const {
 // Module mocks
 // ---------------------------------------------------------------------------
 
-vi.mock("@/lib/auth", () => ({
-  authenticateRequest: mockAuthenticateRequest,
-}));
-
-vi.mock("@/lib/prisma", () => ({
-  getPrisma: vi.fn(() => ({
-    user: { findUnique: mockPrismaFindUnique },
-  })),
+vi.mock("@/lib/api/auth-prelude", () => ({
+  requireAuthenticatedUser: mockRequireAuthenticatedUser,
 }));
 
 vi.mock("@/infrastructure/prisma/evidence-repository", () => ({
@@ -132,9 +127,26 @@ function makeParams() {
   });
 }
 
-function setupAuth(authUserId = "auth-user-id", platformUserId = "user-id") {
-  mockAuthenticateRequest.mockResolvedValue({ id: authUserId });
-  mockPrismaFindUnique.mockResolvedValue({ id: platformUserId });
+function setupAuthSuccess(platformUserId = "user-id") {
+  mockRequireAuthenticatedUser.mockResolvedValue({
+    ok: true,
+    actor: { id: platformUserId },
+    prisma: {},
+  });
+}
+
+function setupAuth401() {
+  mockRequireAuthenticatedUser.mockResolvedValue({
+    ok: false,
+    response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+  });
+}
+
+function setupAuth403() {
+  mockRequireAuthenticatedUser.mockResolvedValue({
+    ok: false,
+    response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+  });
 }
 
 function createPostFormData(
@@ -167,7 +179,7 @@ describe("POST /api/communities/:communityId/incidents/:incidentId/evidence", ()
 
   it("responde 201 cuando el upload es exitoso con una imagen válida", async () => {
     // Arrange
-    setupAuth();
+    setupAuthSuccess();
     mockUploadEvidence.mockResolvedValue({
       evidence: {
         id: "evidence-1",
@@ -199,7 +211,7 @@ describe("POST /api/communities/:communityId/incidents/:incidentId/evidence", ()
 
   it("responde 400 cuando el MIME type no está permitido (PDF)", async () => {
     // Arrange
-    setupAuth();
+    setupAuthSuccess();
 
     const request = new NextRequest(BASE_URL, {
       method: "POST",
@@ -218,7 +230,7 @@ describe("POST /api/communities/:communityId/incidents/:incidentId/evidence", ()
 
   it("responde 400 cuando el archivo está vacío", async () => {
     // Arrange
-    setupAuth();
+    setupAuthSuccess();
     mockUploadEvidence.mockRejectedValue(
       new MockCommunityInvariantError("File is empty"),
     );
@@ -239,7 +251,7 @@ describe("POST /api/communities/:communityId/incidents/:incidentId/evidence", ()
 
   it("responde 400 cuando el archivo excede 5 MB", async () => {
     // Arrange
-    setupAuth();
+    setupAuthSuccess();
 
     const oversizedContent = new Uint8Array(5 * 1024 * 1024 + 1).fill(0x00);
     const request = new NextRequest(BASE_URL, {
@@ -259,7 +271,7 @@ describe("POST /api/communities/:communityId/incidents/:incidentId/evidence", ()
 
   it("responde 400 cuando metadata no es JSON válido", async () => {
     // Arrange
-    setupAuth();
+    setupAuthSuccess();
 
     const formData = createPostFormData("content", "photo.jpg", "image/jpeg", "not-json");
 
@@ -278,9 +290,9 @@ describe("POST /api/communities/:communityId/incidents/:incidentId/evidence", ()
     expect(mockUploadEvidence).not.toHaveBeenCalled();
   });
 
-  it("responde 401 cuando no hay autenticación", async () => {
+  it("responde 401 cuando no hay autenticacion", async () => {
     // Arrange
-    mockAuthenticateRequest.mockResolvedValue(null);
+    setupAuth401();
 
     const request = new NextRequest(BASE_URL, {
       method: "POST",
@@ -298,8 +310,7 @@ describe("POST /api/communities/:communityId/incidents/:incidentId/evidence", ()
 
   it("responde 403 cuando el usuario no existe en Prisma", async () => {
     // Arrange
-    mockAuthenticateRequest.mockResolvedValue({ id: "auth-user-id" });
-    mockPrismaFindUnique.mockResolvedValue(null);
+    setupAuth403();
 
     const request = new NextRequest(BASE_URL, {
       method: "POST",
@@ -317,7 +328,7 @@ describe("POST /api/communities/:communityId/incidents/:incidentId/evidence", ()
 
   it("responde 403 cuando el actor no es miembro ACTIVE de la comunidad", async () => {
     // Arrange
-    setupAuth();
+    setupAuthSuccess();
     mockUploadEvidence.mockRejectedValue(
       new MockCommunityAuthorizationError(
         "Only an ACTIVE community member can upload evidence",
@@ -342,7 +353,7 @@ describe("POST /api/communities/:communityId/incidents/:incidentId/evidence", ()
 
   it("responde 404 cuando la comunidad no existe", async () => {
     // Arrange
-    setupAuth();
+    setupAuthSuccess();
     mockUploadEvidence.mockRejectedValue(
       new MockCommunityNotFoundError("Community not found"),
     );
@@ -363,7 +374,7 @@ describe("POST /api/communities/:communityId/incidents/:incidentId/evidence", ()
 
   it("responde 404 cuando el incidente no existe", async () => {
     // Arrange
-    setupAuth();
+    setupAuthSuccess();
     mockUploadEvidence.mockRejectedValue(
       new MockCommunityNotFoundError("Incident not found"),
     );
@@ -384,7 +395,7 @@ describe("POST /api/communities/:communityId/incidents/:incidentId/evidence", ()
 
   it("responde 400 cuando el incidente está CLOSED", async () => {
     // Arrange
-    setupAuth();
+    setupAuthSuccess();
     mockUploadEvidence.mockRejectedValue(
       new MockCommunityInvariantError(
         "Evidence can only be uploaded to OPEN or REVIEWING incidents",
@@ -419,7 +430,7 @@ describe("GET /api/communities/:communityId/incidents/:incidentId/evidence", () 
 
   it("responde 200 con la lista de evidencia y signed URLs", async () => {
     // Arrange
-    setupAuth();
+    setupAuthSuccess();
     mockGetEvidence.mockResolvedValue({
       items: [
         {
@@ -447,9 +458,9 @@ describe("GET /api/communities/:communityId/incidents/:incidentId/evidence", () 
     );
   });
 
-  it("responde 401 cuando no hay autenticación", async () => {
+  it("responde 401 cuando no hay autenticacion", async () => {
     // Arrange
-    mockAuthenticateRequest.mockResolvedValue(null);
+    setupAuth401();
 
     const request = new NextRequest(BASE_URL, { method: "GET" });
 
@@ -464,8 +475,7 @@ describe("GET /api/communities/:communityId/incidents/:incidentId/evidence", () 
 
   it("responde 403 cuando el usuario no existe en Prisma", async () => {
     // Arrange
-    mockAuthenticateRequest.mockResolvedValue({ id: "auth-user-id" });
-    mockPrismaFindUnique.mockResolvedValue(null);
+    setupAuth403();
 
     const request = new NextRequest(BASE_URL, { method: "GET" });
 
@@ -480,7 +490,7 @@ describe("GET /api/communities/:communityId/incidents/:incidentId/evidence", () 
 
   it("responde 403 cuando NEIGHBOR no es creador del incidente", async () => {
     // Arrange
-    setupAuth();
+    setupAuthSuccess();
     mockGetEvidence.mockRejectedValue(
       new MockCommunityAuthorizationError(
         "Only the incident creator, an ADMIN, or a GUARD can view evidence",
@@ -502,7 +512,7 @@ describe("GET /api/communities/:communityId/incidents/:incidentId/evidence", () 
 
   it("responde 404 cuando la comunidad no existe", async () => {
     // Arrange
-    setupAuth();
+    setupAuthSuccess();
     mockGetEvidence.mockRejectedValue(
       new MockCommunityNotFoundError("Community not found"),
     );
@@ -520,7 +530,7 @@ describe("GET /api/communities/:communityId/incidents/:incidentId/evidence", () 
 
   it("responde 404 cuando el incidente no existe", async () => {
     // Arrange
-    setupAuth();
+    setupAuthSuccess();
     mockGetEvidence.mockRejectedValue(
       new MockCommunityNotFoundError("Incident not found"),
     );

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { authenticateRequest } from "@/lib/auth";
-import { getPrisma } from "@/lib/prisma";
+import { requireAuthenticatedUser } from "@/lib/api/auth-prelude";
 import { createPrismaEvidenceRepository } from "@/infrastructure/prisma/evidence-repository";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { uploadEvidence } from "@/domain/community/evidence/create-evidence";
@@ -30,24 +29,10 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ communityId: string; incidentId: string }> },
 ) {
+  const auth = await requireAuthenticatedUser(request);
+  if (!auth.ok) return auth.response;
+
   try {
-    // 1. Authenticate
-    const authUser = await authenticateRequest(request);
-    if (!authUser) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // 2. Look up the platform user by authProviderId
-    const prisma = getPrisma();
-    const platformUser = await prisma.user.findUnique({
-      where: { authProviderId: authUser.id },
-      select: { id: true },
-    });
-
-    if (!platformUser) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
     // 3. Parse multipart/form-data
     const formData = await request.formData();
     const fileField = formData.get("file");
@@ -98,12 +83,12 @@ export async function POST(
 
     // 6. Execute domain service
     const { communityId, incidentId } = await params;
-    const evidenceRepository = createPrismaEvidenceRepository(prisma);
+    const evidenceRepository = createPrismaEvidenceRepository(auth.prisma);
     const evidenceStorage = createSupabaseEvidenceStorageFromEnv();
 
     const result = await uploadEvidence(
       {
-        actor: { id: platformUser.id },
+        actor: { id: auth.actor.id },
         communityId,
         incidentId,
         file: fileBuffer,
@@ -131,32 +116,18 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ communityId: string; incidentId: string }> },
 ) {
+  const auth = await requireAuthenticatedUser(request);
+  if (!auth.ok) return auth.response;
+
   try {
-    // 1. Authenticate
-    const authUser = await authenticateRequest(request);
-    if (!authUser) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // 2. Look up the platform user by authProviderId
-    const prisma = getPrisma();
-    const platformUser = await prisma.user.findUnique({
-      where: { authProviderId: authUser.id },
-      select: { id: true },
-    });
-
-    if (!platformUser) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
     // 3. Execute domain service
     const { communityId, incidentId } = await params;
-    const evidenceRepository = createPrismaEvidenceRepository(prisma);
+    const evidenceRepository = createPrismaEvidenceRepository(auth.prisma);
     const evidenceStorage = createSupabaseEvidenceStorageFromEnv();
 
     const result = await getEvidence(
       {
-        actor: { id: platformUser.id },
+        actor: { id: auth.actor.id },
         communityId,
         incidentId,
       },

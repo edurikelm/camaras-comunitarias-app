@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { authenticateRequest } from "@/lib/auth";
-import { getPrisma } from "@/lib/prisma";
+import { requireAuthenticatedUser } from "@/lib/api/auth-prelude";
 import { createPrismaCameraRepository } from "@/infrastructure/prisma/camera-repository";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { removeCameraPermission } from "@/domain/community/camera/remove-camera-permission";
@@ -20,31 +19,17 @@ export async function DELETE(
     }>;
   },
 ) {
+  const auth = await requireAuthenticatedUser(_request);
+  if (!auth.ok) return auth.response;
+
   try {
-    // 1. Authenticate
-    const authUser = await authenticateRequest(_request);
-    if (!authUser) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // 2. Look up the platform user by authProviderId
-    const prisma = getPrisma();
-    const platformUser = await prisma.user.findUnique({
-      where: { authProviderId: authUser.id },
-      select: { id: true },
-    });
-
-    if (!platformUser) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
     // 3. Execute domain service
     const { communityId, cameraId, permissionId } = await params;
-    const cameraRepository = createPrismaCameraRepository(prisma);
+    const cameraRepository = createPrismaCameraRepository(auth.prisma);
 
     const result = await removeCameraPermission(
       {
-        actor: { id: platformUser.id },
+        actor: { id: auth.actor.id },
         communityId,
         cameraId,
         permissionId,

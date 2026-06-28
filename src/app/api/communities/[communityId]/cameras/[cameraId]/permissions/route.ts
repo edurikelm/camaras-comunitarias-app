@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { authenticateRequest } from "@/lib/auth";
-import { getPrisma } from "@/lib/prisma";
+import { requireAuthenticatedUser } from "@/lib/api/auth-prelude";
 import { createPrismaCameraRepository } from "@/infrastructure/prisma/camera-repository";
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { setCameraPermission } from "@/domain/community/camera/set-camera-permission";
@@ -26,24 +25,10 @@ export async function POST(
     params: Promise<{ communityId: string; cameraId: string }>;
   },
 ) {
+  const auth = await requireAuthenticatedUser(request);
+  if (!auth.ok) return auth.response;
+
   try {
-    // 1. Authenticate
-    const authUser = await authenticateRequest(request);
-    if (!authUser) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // 2. Look up the platform user by authProviderId
-    const prisma = getPrisma();
-    const platformUser = await prisma.user.findUnique({
-      where: { authProviderId: authUser.id },
-      select: { id: true },
-    });
-
-    if (!platformUser) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
     // 3. Parse body
     const body: RequestBody = await request.json();
 
@@ -63,11 +48,11 @@ export async function POST(
 
     // 4. Execute domain service
     const { communityId, cameraId } = await params;
-    const cameraRepository = createPrismaCameraRepository(prisma);
+    const cameraRepository = createPrismaCameraRepository(auth.prisma);
 
     const result = await setCameraPermission(
       {
-        actor: { id: platformUser.id },
+        actor: { id: auth.actor.id },
         communityId,
         cameraId,
         permission: {
