@@ -1,3 +1,4 @@
+import { DomainError, type DomainErrorContext, type DomainErrorResponse } from "@/domain/shared/domain-error";
 import { CommunityInvariantError } from "@/domain/community/errors";
 
 export type UploadFileInput = {
@@ -34,5 +35,15 @@ export class EvidenceStorageError extends CommunityInvariantError {
   ) {
     super(message);
     this.name = "EvidenceStorageError";
+  }
+  httpResponse(ctx: DomainErrorContext): DomainErrorResponse {
+    return {
+      status: 502,
+      body: { error: "Evidence storage temporarily unavailable" },
+      log: () => console.error(
+        `[${ctx.method} ${ctx.path}] Evidence storage failure:`,
+        this.cause ?? this,
+      ),
+    };
   }
 }

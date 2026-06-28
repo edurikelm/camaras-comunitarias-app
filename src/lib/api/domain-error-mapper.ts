@@ -1,38 +1,16 @@
 import { NextResponse } from "next/server";
-import {
-  CommunityAuthorizationError,
-  CommunityInvariantError,
-  CommunityNotFoundError,
-} from "@/domain/community/errors";
-import { EvidenceStorageError } from "@/domain/community/evidence/evidence-storage";
+import { DomainError, type DomainErrorContext } from "@/domain/shared/domain-error";
 
-export type DomainErrorContext = {
-  method: string; // ej: "GET", "POST", "PATCH"
-  path: string; // ej: "/api/cameras/[cameraId]/live"
-};
+export type { DomainErrorContext };
 
 export function mapDomainErrorToResponse(
   error: unknown,
   context: DomainErrorContext,
 ): NextResponse {
-  if (error instanceof CommunityAuthorizationError) {
-    return NextResponse.json({ error: error.message }, { status: 403 });
-  }
-  if (error instanceof CommunityNotFoundError) {
-    return NextResponse.json({ error: error.message }, { status: 404 });
-  }
-  if (error instanceof EvidenceStorageError) {
-    console.error(
-      `[${context.method} ${context.path}] Evidence storage failure:`,
-      error.cause ?? error,
-    );
-    return NextResponse.json(
-      { error: "Evidence storage temporarily unavailable" },
-      { status: 502 },
-    );
-  }
-  if (error instanceof CommunityInvariantError) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error instanceof DomainError) {
+    const resp = error.httpResponse(context);
+    resp.log?.();
+    return NextResponse.json(resp.body, { status: resp.status });
   }
   console.error(
     `[${context.method} ${context.path}] Unexpected error:`,

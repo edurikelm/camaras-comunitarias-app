@@ -1,5 +1,42 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
+import {
+  DomainError,
+  type DomainErrorContext,
+  type DomainErrorResponse,
+} from "@/domain/shared/domain-error";
+
+// Mock error classes — defined before vi.hoisted so DomainError is in scope.
+// These must be recognised by DomainErrorMapper via instanceof DomainError.
+class MockAuthError extends DomainError {
+  override name = "CommunityAuthorizationError";
+  constructor(m = "Not authorized") {
+    super(m);
+  }
+  httpResponse(_ctx: DomainErrorContext): DomainErrorResponse {
+    return { status: 403, body: { error: this.message } };
+  }
+}
+
+class MockInvariantError extends DomainError {
+  override name = "CommunityInvariantError";
+  constructor(m: string) {
+    super(m);
+  }
+  httpResponse(_ctx: DomainErrorContext): DomainErrorResponse {
+    return { status: 400, body: { error: this.message } };
+  }
+}
+
+class MockNotFoundError extends MockInvariantError {
+  override name = "CommunityNotFoundError";
+  constructor(m = "Not found") {
+    super(m);
+  }
+  httpResponse(_ctx: DomainErrorContext): DomainErrorResponse {
+    return { status: 404, body: { error: this.message } };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Hoisted mock factories — these run BEFORE imports due to vi.mock hoisting.
@@ -23,42 +60,20 @@ const { mockCreateSupabaseEvidenceStorageFromEnv } = vi.hoisted(() => ({
   })),
 }));
 
+const { mockUploadEvidence, mockGetEvidence } = vi.hoisted(() => ({
+  mockUploadEvidence: vi.fn(),
+  mockGetEvidence: vi.fn(),
+}));
+
 const {
-  mockUploadEvidence,
-  mockGetEvidence,
   MockCommunityAuthorizationError,
   MockCommunityInvariantError,
   MockCommunityNotFoundError,
-} = vi.hoisted(() => {
-  class AuthError extends Error {
-    override name = "CommunityAuthorizationError";
-    constructor(m = "Not authorized") {
-      super(m);
-    }
-  }
-
-  class InvariantError extends Error {
-    override name = "CommunityInvariantError";
-    constructor(m: string) {
-      super(m);
-    }
-  }
-
-  class NotFoundError extends InvariantError {
-    override name = "CommunityNotFoundError";
-    constructor(m = "Not found") {
-      super(m);
-    }
-  }
-
-  return {
-    mockUploadEvidence: vi.fn(),
-    mockGetEvidence: vi.fn(),
-    MockCommunityAuthorizationError: AuthError,
-    MockCommunityInvariantError: InvariantError,
-    MockCommunityNotFoundError: NotFoundError,
-  };
-});
+} = {
+  MockCommunityAuthorizationError: MockAuthError,
+  MockCommunityInvariantError: MockInvariantError,
+  MockCommunityNotFoundError: MockNotFoundError,
+};
 
 // ---------------------------------------------------------------------------
 // Module mocks
@@ -91,9 +106,9 @@ vi.mock("@/domain/community/evidence/get-evidence", () => ({
 }));
 
 vi.mock("@/domain/community/errors", () => ({
-  CommunityAuthorizationError: MockCommunityAuthorizationError,
-  CommunityInvariantError: MockCommunityInvariantError,
-  CommunityNotFoundError: MockCommunityNotFoundError,
+  CommunityAuthorizationError: MockAuthError,
+  CommunityInvariantError: MockInvariantError,
+  CommunityNotFoundError: MockNotFoundError,
 }));
 
 // ---------------------------------------------------------------------------
