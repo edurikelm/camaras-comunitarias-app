@@ -5,7 +5,8 @@ import {
   CommunityInvariantError,
   CommunityNotFoundError,
 } from "@/domain/community/errors";
-import type { EvidenceRepository, EvidenceRecord } from "./evidence-repository";
+import type { EvidenceRepository } from "./evidence-repository";
+import type { EvidenceStoragePort } from "./evidence-storage";
 
 // ---------------------------------------------------------------------------
 // Allowed MIME types for evidence uploads
@@ -58,6 +59,7 @@ export type UploadEvidenceResult = {
 
 export type UploadEvidenceDeps = {
   evidenceRepository: EvidenceRepository;
+  evidenceStorage: EvidenceStoragePort;
 };
 
 // ---------------------------------------------------------------------------
@@ -72,10 +74,13 @@ export type UploadEvidenceDeps = {
  * - Incident must exist in the same community and be OPEN or REVIEWING.
  * - MIME type must be one of: image/jpeg, image/png, image/webp.
  * - File size must not exceed 5 MB.
+ *
+ * Storage-first with compensation: uploads to storage BEFORE the Prisma
+ * transaction. If the transaction fails, deletes the uploaded file.
  */
 export async function uploadEvidence(
   input: UploadEvidenceInput,
-  { evidenceRepository }: UploadEvidenceDeps,
+  { evidenceRepository, evidenceStorage }: UploadEvidenceDeps,
 ): Promise<UploadEvidenceResult> {
   const communityId = input.communityId.trim();
   if (!communityId) {
@@ -107,88 +112,102 @@ export async function uploadEvidence(
     );
   }
 
-  return evidenceRepository.runInTransaction(async (tx) => {
-    // 1. Validate community exists and is ACTIVE
-    const community = await tx.findCommunityById(communityId);
-    if (!community) {
-      throw new CommunityNotFoundError("Community not found");
-    }
-    if (community.status !== "ACTIVE") {
-      throw new CommunityInvariantError("Community is not active");
-    }
+  // Generate storage path BEFORE the transaction
+  const ext = mimeTypeToExtension(input.mimeType);
+  const storageId = randomUUID();
+  const storagePath = `${communityId}/${incidentId}/${storageId}.${ext}`;
 
-    // 2. Validate actor is an ACTIVE member (any role: NEIGHBOR, GUARD, ADMIN)
-    const actorMember = await tx.findActiveMember(communityId, input.actor.id);
-    if (!actorMember) {
-      throw new CommunityAuthorizationError(
-        "Only an ACTIVE community member can upload evidence",
-      );
-    }
+  // 1. Upload file to storage BEFORE the transaction
+  await evidenceStorage.uploadFile({
+    storagePath,
+    file: fileBuffer,
+    mimeType: input.mimeType,
+  });
 
-    // 3. Validate incident exists in the same community and is OPEN or REVIEWING
-    const incident = await tx.findIncidentById(communityId, incidentId);
-    if (!incident) {
-      throw new CommunityNotFoundError("Incident not found");
-    }
-    if (
-      incident.status !== IncidentStatus.OPEN &&
-      incident.status !== IncidentStatus.REVIEWING
-    ) {
-      throw new CommunityInvariantError(
-        "Evidence can only be uploaded to OPEN or REVIEWING incidents",
-      );
-    }
+  // 2. Execute Prisma transaction with compensation on failure
+  try {
+    return await evidenceRepository.runInTransaction(async (tx) => {
+      // Validate community exists and is ACTIVE
+      const community = await tx.findCommunityById(communityId);
+      if (!community) {
+        throw new CommunityNotFoundError("Community not found");
+      }
+      if (community.status !== "ACTIVE") {
+        throw new CommunityInvariantError("Community is not active");
+      }
 
-    // 4. Determine file extension from MIME type
-    const ext = mimeTypeToExtension(input.mimeType);
-    const storageId = randomUUID();
-    const storagePath = `${communityId}/${incidentId}/${storageId}.${ext}`;
+      // Validate actor is an ACTIVE member (any role: NEIGHBOR, GUARD, ADMIN)
+      const actorMember = await tx.findActiveMember(communityId, input.actor.id);
+      if (!actorMember) {
+        throw new CommunityAuthorizationError(
+          "Only an ACTIVE community member can upload evidence",
+        );
+      }
 
-    // 5. Upload file to Supabase Storage
-    await tx.uploadFile({
-      storagePath,
-      file: fileBuffer,
-      mimeType: input.mimeType,
-    });
+      // Validate incident exists in the same community and is OPEN or REVIEWING
+      const incident = await tx.findIncidentById(communityId, incidentId);
+      if (!incident) {
+        throw new CommunityNotFoundError("Incident not found");
+      }
+      if (
+        incident.status !== IncidentStatus.OPEN &&
+        incident.status !== IncidentStatus.REVIEWING
+      ) {
+        throw new CommunityInvariantError(
+          "Evidence can only be uploaded to OPEN or REVIEWING incidents",
+        );
+      }
 
-    // 6. Persist evidence record in DB
-    const evidence = await tx.createEvidence({
-      communityId,
-      incidentId,
-      uploadedById: input.actor.id,
-      storagePath,
-      mimeType: input.mimeType,
-      metadata: input.metadata,
-    });
-
-    // 7. Audit
-    await tx.createAuditLog({
-      communityId,
-      actorId: input.actor.id,
-      action: AuditAction.EVIDENCE_UPLOADED,
-      entityType: "Evidence",
-      entityId: evidence.id,
-      metadata: {
+      // Persist evidence record in DB
+      const evidence = await tx.createEvidence({
+        communityId,
         incidentId,
+        uploadedById: input.actor.id,
         storagePath,
         mimeType: input.mimeType,
-        fileSize,
-      },
-    });
+        metadata: input.metadata,
+      });
 
-    return {
-      evidence: {
-        id: evidence.id,
-        communityId: evidence.communityId,
-        incidentId: evidence.incidentId,
-        uploadedById: evidence.uploadedById,
-        storagePath: evidence.storagePath,
-        mimeType: evidence.mimeType,
-        metadata: evidence.metadata as Record<string, unknown> | null,
-        createdAt: evidence.createdAt,
-      },
-    };
-  });
+      // Audit
+      await tx.createAuditLog({
+        communityId,
+        actorId: input.actor.id,
+        action: AuditAction.EVIDENCE_UPLOADED,
+        entityType: "Evidence",
+        entityId: evidence.id,
+        metadata: {
+          incidentId,
+          storagePath,
+          mimeType: input.mimeType,
+          fileSize,
+        },
+      });
+
+      return {
+        evidence: {
+          id: evidence.id,
+          communityId: evidence.communityId,
+          incidentId: evidence.incidentId,
+          uploadedById: evidence.uploadedById,
+          storagePath: evidence.storagePath,
+          mimeType: evidence.mimeType,
+          metadata: evidence.metadata as Record<string, unknown> | null,
+          createdAt: evidence.createdAt,
+        },
+      };
+    });
+  } catch (err) {
+    // Compensate: delete the uploaded file if the transaction failed
+    try {
+      await evidenceStorage.deleteFile(storagePath);
+    } catch (cleanupErr) {
+      console.error(
+        `[uploadEvidence] Orphan storage object at ${storagePath} after DB failure:`,
+        cleanupErr,
+      );
+    }
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------

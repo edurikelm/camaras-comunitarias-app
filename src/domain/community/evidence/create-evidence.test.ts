@@ -12,6 +12,8 @@ import {
 } from "@/domain/community/errors";
 import { uploadEvidence } from "./create-evidence";
 import type { EvidenceRepository } from "./evidence-repository";
+import type { EvidenceStoragePort } from "./evidence-storage";
+import { EvidenceStorageError } from "./evidence-storage";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -58,10 +60,6 @@ function createRepository(
       deletedAt: null,
     })),
 
-    // Storage
-    uploadFile: vi.fn(),
-    createSignedUrl: vi.fn(),
-
     // Audit
     createAuditLog: vi.fn(),
 
@@ -71,6 +69,15 @@ function createRepository(
     ...overrides,
   };
   return repository;
+}
+
+function createStorage(overrides: Partial<EvidenceStoragePort> = {}): EvidenceStoragePort {
+  return {
+    uploadFile: vi.fn(),
+    createSignedUrl: vi.fn(),
+    deleteFile: vi.fn(),
+    ...overrides,
+  };
 }
 
 const pngBuffer = Buffer.from(
@@ -93,9 +100,11 @@ const validInput = {
 describe("uploadEvidence", () => {
   it("NEIGHBOR sube imagen PNG exitosamente", async () => {
     const repository = createRepository();
+    const storage = createStorage();
 
     const result = await uploadEvidence(validInput, {
       evidenceRepository: repository,
+      evidenceStorage: storage,
     });
 
     expect(result.evidence).toMatchObject({
@@ -106,7 +115,7 @@ describe("uploadEvidence", () => {
       mimeType: "image/png",
     });
 
-    expect(repository.uploadFile).toHaveBeenCalledWith(
+    expect(storage.uploadFile).toHaveBeenCalledWith(
       expect.objectContaining({
         mimeType: "image/png",
         storagePath: expect.stringMatching(
@@ -138,10 +147,11 @@ describe("uploadEvidence", () => {
         status: CommunityMemberStatus.ACTIVE,
       })),
     });
+    const storage = createStorage();
 
     const result = await uploadEvidence(
       { ...validInput, actor: { id: "user-guard" } },
-      { evidenceRepository: repository },
+      { evidenceRepository: repository, evidenceStorage: storage },
     );
 
     expect(result.evidence).toMatchObject({
@@ -160,10 +170,11 @@ describe("uploadEvidence", () => {
         status: CommunityMemberStatus.ACTIVE,
       })),
     });
+    const storage = createStorage();
 
     const result = await uploadEvidence(
       { ...validInput, actor: { id: "user-admin" } },
-      { evidenceRepository: repository },
+      { evidenceRepository: repository, evidenceStorage: storage },
     );
 
     expect(result.evidence).toMatchObject({
@@ -176,12 +187,18 @@ describe("uploadEvidence", () => {
     const repository = createRepository({
       findActiveMember: vi.fn(async () => null),
     });
+    const storage = createStorage();
 
     await expect(
-      uploadEvidence(validInput, { evidenceRepository: repository }),
+      uploadEvidence(validInput, {
+        evidenceRepository: repository,
+        evidenceStorage: storage,
+      }),
     ).rejects.toThrow(CommunityAuthorizationError);
 
-    expect(repository.uploadFile).not.toHaveBeenCalled();
+    // Storage-first: uploadFile called, then transaction failed, then compensation deleteFile called
+    expect(storage.uploadFile).toHaveBeenCalledTimes(1);
+    expect(storage.deleteFile).toHaveBeenCalledTimes(1);
     expect(repository.createEvidence).not.toHaveBeenCalled();
     expect(repository.createAuditLog).not.toHaveBeenCalled();
   });
@@ -190,11 +207,12 @@ describe("uploadEvidence", () => {
     const repository = createRepository({
       findActiveMember: vi.fn(async () => null),
     });
+    const storage = createStorage();
 
     await expect(
       uploadEvidence(
         { ...validInput, actor: { id: "pending-user" } },
-        { evidenceRepository: repository },
+        { evidenceRepository: repository, evidenceStorage: storage },
       ),
     ).rejects.toThrow(
       "Only an ACTIVE community member can upload evidence",
@@ -205,12 +223,18 @@ describe("uploadEvidence", () => {
     const repository = createRepository({
       findCommunityById: vi.fn(async () => null),
     });
+    const storage = createStorage();
 
     await expect(
-      uploadEvidence(validInput, { evidenceRepository: repository }),
+      uploadEvidence(validInput, {
+        evidenceRepository: repository,
+        evidenceStorage: storage,
+      }),
     ).rejects.toThrow("Community not found");
 
-    expect(repository.uploadFile).not.toHaveBeenCalled();
+    // Storage-first: uploadFile called before transaction validation
+    expect(storage.uploadFile).toHaveBeenCalledTimes(1);
+    expect(storage.deleteFile).toHaveBeenCalledTimes(1); // compensation
     expect(repository.createEvidence).not.toHaveBeenCalled();
   });
 
@@ -222,22 +246,36 @@ describe("uploadEvidence", () => {
         status: CommunityStatus.SUSPENDED,
       })),
     });
+    const storage = createStorage();
 
     await expect(
-      uploadEvidence(validInput, { evidenceRepository: repository }),
+      uploadEvidence(validInput, {
+        evidenceRepository: repository,
+        evidenceStorage: storage,
+      }),
     ).rejects.toThrow("Community is not active");
+
+    // Storage-first: uploadFile called, compensation deleteFile called
+    expect(storage.uploadFile).toHaveBeenCalledTimes(1);
+    expect(storage.deleteFile).toHaveBeenCalledTimes(1);
   });
 
   it("rechaza incidente inexistente", async () => {
     const repository = createRepository({
       findIncidentById: vi.fn(async () => null),
     });
+    const storage = createStorage();
 
     await expect(
-      uploadEvidence(validInput, { evidenceRepository: repository }),
+      uploadEvidence(validInput, {
+        evidenceRepository: repository,
+        evidenceStorage: storage,
+      }),
     ).rejects.toThrow("Incident not found");
 
-    expect(repository.uploadFile).not.toHaveBeenCalled();
+    // Storage-first: uploadFile called, compensation deleteFile called
+    expect(storage.uploadFile).toHaveBeenCalledTimes(1);
+    expect(storage.deleteFile).toHaveBeenCalledTimes(1);
     expect(repository.createEvidence).not.toHaveBeenCalled();
   });
 
@@ -250,14 +288,20 @@ describe("uploadEvidence", () => {
         status: IncidentStatus.CLOSED,
       })),
     });
+    const storage = createStorage();
 
     await expect(
-      uploadEvidence(validInput, { evidenceRepository: repository }),
+      uploadEvidence(validInput, {
+        evidenceRepository: repository,
+        evidenceStorage: storage,
+      }),
     ).rejects.toThrow(
       "Evidence can only be uploaded to OPEN or REVIEWING incidents",
     );
 
-    expect(repository.uploadFile).not.toHaveBeenCalled();
+    // Storage-first: uploadFile called, compensation deleteFile called
+    expect(storage.uploadFile).toHaveBeenCalledTimes(1);
+    expect(storage.deleteFile).toHaveBeenCalledTimes(1);
     expect(repository.createEvidence).not.toHaveBeenCalled();
   });
 
@@ -270,9 +314,11 @@ describe("uploadEvidence", () => {
         status: IncidentStatus.REVIEWING,
       })),
     });
+    const storage = createStorage();
 
     const result = await uploadEvidence(validInput, {
       evidenceRepository: repository,
+      evidenceStorage: storage,
     });
 
     expect(result.evidence.mimeType).toBe("image/png");
@@ -281,34 +327,38 @@ describe("uploadEvidence", () => {
 
   it("rechaza MIME type invalido", async () => {
     const repository = createRepository();
+    const storage = createStorage();
 
     await expect(
       uploadEvidence(
         { ...validInput, mimeType: "application/pdf" },
-        { evidenceRepository: repository },
+        { evidenceRepository: repository, evidenceStorage: storage },
       ),
     ).rejects.toThrow("Invalid MIME type");
 
     expect(repository.runInTransaction).not.toHaveBeenCalled();
+    expect(storage.uploadFile).not.toHaveBeenCalled();
   });
 
   it("rechaza imagen GIF", async () => {
     const repository = createRepository();
+    const storage = createStorage();
 
     await expect(
       uploadEvidence(
         { ...validInput, mimeType: "image/gif" },
-        { evidenceRepository: repository },
+        { evidenceRepository: repository, evidenceStorage: storage },
       ),
     ).rejects.toThrow("Invalid MIME type");
   });
 
   it("acepta image/jpeg", async () => {
     const repository = createRepository();
+    const storage = createStorage();
 
     const result = await uploadEvidence(
       { ...validInput, mimeType: "image/jpeg" },
-      { evidenceRepository: repository },
+      { evidenceRepository: repository, evidenceStorage: storage },
     );
 
     expect(result.evidence.mimeType).toBe("image/jpeg");
@@ -316,10 +366,11 @@ describe("uploadEvidence", () => {
 
   it("acepta image/webp", async () => {
     const repository = createRepository();
+    const storage = createStorage();
 
     const result = await uploadEvidence(
       { ...validInput, mimeType: "image/webp" },
-      { evidenceRepository: repository },
+      { evidenceRepository: repository, evidenceStorage: storage },
     );
 
     expect(result.evidence.mimeType).toBe("image/webp");
@@ -327,60 +378,67 @@ describe("uploadEvidence", () => {
 
   it("rechaza archivo vacio", async () => {
     const repository = createRepository();
+    const storage = createStorage();
 
     await expect(
       uploadEvidence(
         { ...validInput, file: Buffer.from([]) },
-        { evidenceRepository: repository },
+        { evidenceRepository: repository, evidenceStorage: storage },
       ),
     ).rejects.toThrow("File is empty");
   });
 
   it("rechaza archivo que excede 5MB", async () => {
     const repository = createRepository();
+    const storage = createStorage();
     const bigBuffer = Buffer.alloc(6 * 1024 * 1024);
 
     await expect(
       uploadEvidence(
         { ...validInput, file: bigBuffer },
-        { evidenceRepository: repository },
+        { evidenceRepository: repository, evidenceStorage: storage },
       ),
     ).rejects.toThrow("File exceeds maximum size of 5 MB");
   });
 
   it("rechaza communityId vacio", async () => {
     const repository = createRepository();
+    const storage = createStorage();
 
     await expect(
       uploadEvidence(
         { ...validInput, communityId: "" },
-        { evidenceRepository: repository },
+        { evidenceRepository: repository, evidenceStorage: storage },
       ),
     ).rejects.toThrow(CommunityInvariantError);
 
     expect(repository.runInTransaction).not.toHaveBeenCalled();
+    expect(storage.uploadFile).not.toHaveBeenCalled();
   });
 
   it("rechaza incidentId vacio", async () => {
     const repository = createRepository();
+    const storage = createStorage();
 
     await expect(
       uploadEvidence(
         { ...validInput, incidentId: "" },
-        { evidenceRepository: repository },
+        { evidenceRepository: repository, evidenceStorage: storage },
       ),
     ).rejects.toThrow(CommunityInvariantError);
 
     expect(repository.runInTransaction).not.toHaveBeenCalled();
+    expect(storage.uploadFile).not.toHaveBeenCalled();
   });
 
   it("incluye metadata opcional en el registro", async () => {
     const repository = createRepository();
+    const storage = createStorage();
     const metadata = { source: "user-upload", notes: "Photo of suspect" };
 
     const result = await uploadEvidence(
       { ...validInput, metadata },
-      { evidenceRepository: repository },
+      { evidenceRepository: repository, evidenceStorage: storage },
     );
 
     // Metadata is stored via createEvidence (the mock returns null though)
@@ -394,16 +452,62 @@ describe("uploadEvidence", () => {
 
   it("genera storagePath con extension correcta para jpeg", async () => {
     const repository = createRepository();
+    const storage = createStorage();
 
     await uploadEvidence(
       { ...validInput, mimeType: "image/jpeg" },
-      { evidenceRepository: repository },
+      { evidenceRepository: repository, evidenceStorage: storage },
     );
 
-    expect(repository.uploadFile).toHaveBeenCalledWith(
+    expect(storage.uploadFile).toHaveBeenCalledWith(
       expect.objectContaining({
         storagePath: expect.stringMatching(/\.jpg$/),
       }),
     );
+  });
+
+  it("compensa con deleteFile si la transaccion Prisma falla", async () => {
+    const repository = createRepository({
+      findCommunityById: vi.fn(async () => {
+        throw new Error("DB connection lost");
+      }),
+    });
+    const storage = createStorage();
+
+    await expect(
+      uploadEvidence(validInput, {
+        evidenceRepository: repository,
+        evidenceStorage: storage,
+      }),
+    ).rejects.toThrow("DB connection lost");
+
+    // Upload was called first (storage-first)
+    expect(storage.uploadFile).toHaveBeenCalledTimes(1);
+    // Compensation called after DB failure
+    expect(storage.deleteFile).toHaveBeenCalledTimes(1);
+    // createEvidence was never called
+    expect(repository.createEvidence).not.toHaveBeenCalled();
+  });
+
+  it("si uploadFile falla, NO se llama a createEvidence ni deleteFile", async () => {
+    const repository = createRepository();
+    const storage = createStorage({
+      uploadFile: vi.fn().mockRejectedValue(
+        new EvidenceStorageError("Upload failed", new Error("Network error")),
+      ),
+    });
+
+    await expect(
+      uploadEvidence(validInput, {
+        evidenceRepository: repository,
+        evidenceStorage: storage,
+      }),
+    ).rejects.toThrow(EvidenceStorageError);
+
+    // uploadFile failed so we don't proceed to transaction
+    expect(storage.uploadFile).toHaveBeenCalledTimes(1);
+    // No compensation needed since upload failed
+    expect(storage.deleteFile).not.toHaveBeenCalled();
+    expect(repository.createEvidence).not.toHaveBeenCalled();
   });
 });

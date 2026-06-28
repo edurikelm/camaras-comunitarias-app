@@ -4,10 +4,8 @@ import {
   CommunityInvariantError,
   CommunityNotFoundError,
 } from "@/domain/community/errors";
-import type {
-  EvidenceRepository,
-  EvidenceWithSignedUrl,
-} from "./evidence-repository";
+import type { EvidenceRepository } from "./evidence-repository";
+import type { EvidenceStoragePort } from "./evidence-storage";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -41,6 +39,7 @@ export type GetEvidenceResult = {
 
 export type GetEvidenceDeps = {
   evidenceRepository: EvidenceRepository;
+  evidenceStorage: EvidenceStoragePort;
 };
 
 // ---------------------------------------------------------------------------
@@ -61,7 +60,7 @@ const SIGNED_URL_EXPIRY_SECONDS = 3600; // 1 hour
  */
 export async function getEvidence(
   input: GetEvidenceInput,
-  { evidenceRepository }: GetEvidenceDeps,
+  { evidenceRepository, evidenceStorage }: GetEvidenceDeps,
 ): Promise<GetEvidenceResult> {
   const { communityId, incidentId } = input;
 
@@ -109,7 +108,7 @@ export async function getEvidence(
   // 5. Generate signed URLs for each evidence item
   const items: EvidenceItem[] = await Promise.all(
     evidenceRecords.map(async (record) => {
-      const signedUrl = await evidenceRepository.createSignedUrl(
+      const signedUrl = await evidenceStorage.createSignedUrl(
         record.storagePath,
         SIGNED_URL_EXPIRY_SECONDS,
       );

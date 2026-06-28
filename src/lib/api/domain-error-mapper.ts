@@ -4,6 +4,7 @@ import {
   CommunityInvariantError,
   CommunityNotFoundError,
 } from "@/domain/community/errors";
+import { EvidenceStorageError } from "@/domain/community/evidence/evidence-storage";
 
 export type DomainErrorContext = {
   method: string; // ej: "GET", "POST", "PATCH"
@@ -19,6 +20,16 @@ export function mapDomainErrorToResponse(
   }
   if (error instanceof CommunityNotFoundError) {
     return NextResponse.json({ error: error.message }, { status: 404 });
+  }
+  if (error instanceof EvidenceStorageError) {
+    console.error(
+      `[${context.method} ${context.path}] Evidence storage failure:`,
+      error.cause ?? error,
+    );
+    return NextResponse.json(
+      { error: "Evidence storage temporarily unavailable" },
+      { status: 502 },
+    );
   }
   if (error instanceof CommunityInvariantError) {
     return NextResponse.json({ error: error.message }, { status: 400 });

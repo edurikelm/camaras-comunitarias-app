@@ -4,6 +4,7 @@ import {
   CommunityInvariantError,
   CommunityNotFoundError,
 } from "@/domain/community/errors";
+import { EvidenceStorageError } from "@/domain/community/evidence/evidence-storage";
 import {
   mapDomainErrorToResponse,
   DomainErrorContext,
@@ -37,6 +38,36 @@ describe("mapDomainErrorToResponse", () => {
     const error = new CommunityNotFoundError("Camera not found");
     expect(error instanceof CommunityInvariantError).toBe(true);
     expect(error instanceof CommunityNotFoundError).toBe(true);
+  });
+
+  it("returns 502 for EvidenceStorageError with storage failure message", () => {
+    const error = new EvidenceStorageError(
+      "Failed to upload file",
+      new Error("Bucket not found"),
+    );
+    const consoleErrorSpy = vi.spyOn(console, "error");
+    const response = mapDomainErrorToResponse(error, context);
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(consoleErrorSpy).toHaveBeenCalledOnce();
+    const loggedMessage = consoleErrorSpy.mock.calls[0];
+    expect(loggedMessage[0]).toBe(
+      "[GET /api/test/resource] Evidence storage failure:",
+    );
+    expect(loggedMessage[1]).toBe(error.cause);
+  });
+
+  it("EvidenceStorageError does NOT fall through to CommunityInvariantError branch", () => {
+    // EvidenceStorageError extends CommunityInvariantError for back-compat,
+    // but the mapper must catch it BEFORE the general CommunityInvariantError branch.
+    const error = new EvidenceStorageError("Storage failed");
+    const consoleErrorSpy = vi.spyOn(console, "error").mockClear();
+    const response = mapDomainErrorToResponse(error, context);
+
+    // Must be 502, not 400 (which would happen if it fell through to InvariantError)
+    expect(response.status).toBe(502);
+    expect(consoleErrorSpy).toHaveBeenCalledOnce(); // logs the cause
   });
 
   it("returns 400 with error message for CommunityInvariantError (not NotFound)", () => {

@@ -69,15 +69,6 @@ export type CreateAuditLogInput = {
   metadata?: Record<string, unknown>;
 };
 
-export type UploadFileInput = {
-  /** Full storage path, e.g. `{communityId}/{incidentId}/{uuid}.{ext}` */
-  storagePath: string;
-  /** File contents as a Buffer or ArrayBuffer */
-  file: Buffer | ArrayBuffer;
-  /** MIME type of the file */
-  mimeType: string;
-};
-
 // ---------------------------------------------------------------------------
 // Repository interface
 // ---------------------------------------------------------------------------
@@ -103,13 +94,6 @@ export interface EvidenceRepository {
   // Evidence queries / mutations
   findEvidenceByIncident(incidentId: string): Promise<EvidenceRecord[]>;
   createEvidence(input: CreateEvidenceInput): Promise<EvidenceRecord>;
-
-  // Storage operations
-  uploadFile(input: UploadFileInput): Promise<void>;
-  createSignedUrl(
-    storagePath: string,
-    expiresInSeconds: number,
-  ): Promise<string>;
 
   // Audit
   createAuditLog(input: CreateAuditLogInput): Promise<void>;

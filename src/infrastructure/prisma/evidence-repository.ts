@@ -6,22 +6,18 @@ import type {
   IncidentRecord,
   EvidenceRecord,
   CreateEvidenceInput,
-  UploadFileInput,
   CreateAuditLogInput,
 } from "@/domain/community/evidence/evidence-repository";
-import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 /**
- * Prisma + Supabase Storage backed EvidenceRepository.
+ * Prisma-backed EvidenceRepository.
  *
- * File uploads and signed URL generation go through the Supabase admin client
- * (service_role key), while metadata is persisted via Prisma.
+ * Metadata is persisted via Prisma. File storage is handled by EvidenceStoragePort
+ * which is injected separately into domain services.
  */
 export function createPrismaEvidenceRepository(
   prisma: PrismaClient,
 ): EvidenceRepository {
-  const STORAGE_BUCKET = "evidence";
-
   function createUnitOfWork(
     tx: Prisma.TransactionClient,
   ): EvidenceRepository {
@@ -138,47 +134,6 @@ export function createPrismaEvidenceRepository(
           },
         });
         return row as EvidenceRecord;
-      },
-
-      // -------------------------------------------------------------------
-      // Storage operations (Supabase)
-      // -------------------------------------------------------------------
-
-      async uploadFile(input: UploadFileInput) {
-        const supabase = getSupabaseAdmin();
-        const fileBytes =
-          input.file instanceof Buffer
-            ? input.file
-            : Buffer.from(new Uint8Array(input.file as ArrayBuffer));
-
-        const { error } = await supabase.storage
-          .from(STORAGE_BUCKET)
-          .upload(input.storagePath, fileBytes, {
-            contentType: input.mimeType,
-            upsert: false,
-          });
-
-        if (error) {
-          throw new Error(
-            `Failed to upload file to Supabase Storage: ${error.message}`,
-          );
-        }
-      },
-
-      async createSignedUrl(storagePath, expiresInSeconds) {
-        const supabase = getSupabaseAdmin();
-
-        const { data, error } = await supabase.storage
-          .from(STORAGE_BUCKET)
-          .createSignedUrl(storagePath, expiresInSeconds);
-
-        if (error || !data) {
-          throw new Error(
-            `Failed to create signed URL: ${error?.message ?? "unknown error"}`,
-          );
-        }
-
-        return data.signedUrl;
       },
 
       // -------------------------------------------------------------------

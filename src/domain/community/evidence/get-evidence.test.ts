@@ -11,6 +11,7 @@ import {
 } from "@/domain/community/errors";
 import { getEvidence } from "./get-evidence";
 import type { EvidenceRepository } from "./evidence-repository";
+import type { EvidenceStoragePort } from "./evidence-storage";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -58,16 +59,23 @@ function createRepository(
       },
     ]),
     createEvidence: vi.fn(),
-    uploadFile: vi.fn(),
-    createSignedUrl: vi.fn(async (storagePath) => {
-      const ext = storagePath.split(".").pop();
-      return `https://supabase.co/storage/v1/object/signed/evidence/${storagePath}?token=signed-${ext}`;
-    }),
     createAuditLog: vi.fn(),
     runInTransaction: vi.fn(async (op) => op(repository)),
     ...overrides,
   };
   return repository;
+}
+
+function createStorage(overrides: Partial<EvidenceStoragePort> = {}): EvidenceStoragePort {
+  return {
+    uploadFile: vi.fn(),
+    createSignedUrl: vi.fn(async (storagePath) => {
+      const ext = storagePath.split(".").pop();
+      return `https://supabase.co/storage/v1/object/signed/evidence/${storagePath}?token=signed-${ext}`;
+    }),
+    deleteFile: vi.fn(),
+    ...overrides,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -77,6 +85,7 @@ function createRepository(
 describe("getEvidence", () => {
   it("el creador del incidente puede ver la evidencia", async () => {
     const repository = createRepository();
+    const storage = createStorage();
 
     const result = await getEvidence(
       {
@@ -84,7 +93,7 @@ describe("getEvidence", () => {
         communityId: "community-1",
         incidentId: "incident-1",
       },
-      { evidenceRepository: repository },
+      { evidenceRepository: repository, evidenceStorage: storage },
     );
 
     expect(result.items).toHaveLength(2);
@@ -107,6 +116,7 @@ describe("getEvidence", () => {
         status: CommunityMemberStatus.ACTIVE,
       })),
     });
+    const storage = createStorage();
 
     const result = await getEvidence(
       {
@@ -114,7 +124,7 @@ describe("getEvidence", () => {
         communityId: "community-1",
         incidentId: "incident-1",
       },
-      { evidenceRepository: repository },
+      { evidenceRepository: repository, evidenceStorage: storage },
     );
 
     expect(result.items).toHaveLength(2);
@@ -130,6 +140,7 @@ describe("getEvidence", () => {
         status: CommunityMemberStatus.ACTIVE,
       })),
     });
+    const storage = createStorage();
 
     const result = await getEvidence(
       {
@@ -137,7 +148,7 @@ describe("getEvidence", () => {
         communityId: "community-1",
         incidentId: "incident-1",
       },
-      { evidenceRepository: repository },
+      { evidenceRepository: repository, evidenceStorage: storage },
     );
 
     expect(result.items).toHaveLength(2);
@@ -147,6 +158,7 @@ describe("getEvidence", () => {
     const repository = createRepository({
       findActiveAdminOrGuardMember: vi.fn(async () => null),
     });
+    const storage = createStorage();
 
     await expect(
       getEvidence(
@@ -155,13 +167,14 @@ describe("getEvidence", () => {
           communityId: "community-1",
           incidentId: "incident-1",
         },
-        { evidenceRepository: repository },
+        { evidenceRepository: repository, evidenceStorage: storage },
       ),
     ).rejects.toThrow(CommunityAuthorizationError);
   });
 
   it("audita EVIDENCE_VIEWED por cada evidencia", async () => {
     const repository = createRepository();
+    const storage = createStorage();
 
     await getEvidence(
       {
@@ -169,7 +182,7 @@ describe("getEvidence", () => {
         communityId: "community-1",
         incidentId: "incident-1",
       },
-      { evidenceRepository: repository },
+      { evidenceRepository: repository, evidenceStorage: storage },
     );
 
     expect(repository.createAuditLog).toHaveBeenCalledTimes(2);
@@ -193,6 +206,7 @@ describe("getEvidence", () => {
     const repository = createRepository({
       findIncidentById: vi.fn(async () => null),
     });
+    const storage = createStorage();
 
     await expect(
       getEvidence(
@@ -201,7 +215,7 @@ describe("getEvidence", () => {
           communityId: "community-1",
           incidentId: "nonexistent-incident",
         },
-        { evidenceRepository: repository },
+        { evidenceRepository: repository, evidenceStorage: storage },
       ),
     ).rejects.toThrow("Incident not found");
   });
@@ -214,6 +228,7 @@ describe("getEvidence", () => {
         status: "SUSPENDED" as const,
       })),
     });
+    const storage = createStorage();
 
     await expect(
       getEvidence(
@@ -222,7 +237,7 @@ describe("getEvidence", () => {
           communityId: "community-1",
           incidentId: "incident-1",
         },
-        { evidenceRepository: repository },
+        { evidenceRepository: repository, evidenceStorage: storage },
       ),
     ).rejects.toThrow(CommunityInvariantError);
     await expect(
@@ -232,7 +247,7 @@ describe("getEvidence", () => {
           communityId: "community-1",
           incidentId: "incident-1",
         },
-        { evidenceRepository: repository },
+        { evidenceRepository: repository, evidenceStorage: storage },
       ),
     ).rejects.toThrow("Community is not active");
   });
@@ -241,6 +256,7 @@ describe("getEvidence", () => {
     const repository = createRepository({
       findEvidenceByIncident: vi.fn(async () => []),
     });
+    const storage = createStorage();
 
     const result = await getEvidence(
       {
@@ -248,7 +264,7 @@ describe("getEvidence", () => {
         communityId: "community-1",
         incidentId: "incident-empty",
       },
-      { evidenceRepository: repository },
+      { evidenceRepository: repository, evidenceStorage: storage },
     );
 
     expect(result.items).toHaveLength(0);
@@ -256,6 +272,7 @@ describe("getEvidence", () => {
 
   it("retorna metadata cuando existe", async () => {
     const repository = createRepository();
+    const storage = createStorage();
 
     const result = await getEvidence(
       {
@@ -263,7 +280,7 @@ describe("getEvidence", () => {
         communityId: "community-1",
         incidentId: "incident-1",
       },
-      { evidenceRepository: repository },
+      { evidenceRepository: repository, evidenceStorage: storage },
     );
 
     expect(result.items[1].metadata).toEqual({ description: "Close-up" });
@@ -273,6 +290,7 @@ describe("getEvidence", () => {
     const repository = createRepository({
       findActiveAdminOrGuardMember: vi.fn(async () => null),
     });
+    const storage = createStorage();
 
     await expect(
       getEvidence(
@@ -281,7 +299,7 @@ describe("getEvidence", () => {
           communityId: "community-1",
           incidentId: "incident-1",
         },
-        { evidenceRepository: repository },
+        { evidenceRepository: repository, evidenceStorage: storage },
       ),
     ).rejects.toThrow(
       "Only the incident creator, an ADMIN, or a GUARD can view evidence",
@@ -290,6 +308,7 @@ describe("getEvidence", () => {
 
   it("el creador del incidente puede ver evidencia incluso si no es miembro activo", async () => {
     const repository = createRepository();
+    const storage = createStorage();
 
     const result = await getEvidence(
       {
@@ -297,7 +316,7 @@ describe("getEvidence", () => {
         communityId: "community-1",
         incidentId: "incident-1",
       },
-      { evidenceRepository: repository },
+      { evidenceRepository: repository, evidenceStorage: storage },
     );
 
     expect(result.items).toHaveLength(2);

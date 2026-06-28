@@ -15,6 +15,14 @@ const { mockPrismaFindUnique } = vi.hoisted(() => ({
   mockPrismaFindUnique: vi.fn(),
 }));
 
+const { mockCreateSupabaseEvidenceStorageFromEnv } = vi.hoisted(() => ({
+  mockCreateSupabaseEvidenceStorageFromEnv: vi.fn(() => ({
+    uploadFile: vi.fn(),
+    createSignedUrl: vi.fn(),
+    deleteFile: vi.fn(),
+  })),
+}));
+
 const {
   mockUploadEvidence,
   mockGetEvidence,
@@ -68,6 +76,10 @@ vi.mock("@/lib/prisma", () => ({
 
 vi.mock("@/infrastructure/prisma/evidence-repository", () => ({
   createPrismaEvidenceRepository: vi.fn(() => ({})),
+}));
+
+vi.mock("@/infrastructure/storage", () => ({
+  createSupabaseEvidenceStorageFromEnv: mockCreateSupabaseEvidenceStorageFromEnv,
 }));
 
 vi.mock("@/domain/community/evidence/create-evidence", () => ({

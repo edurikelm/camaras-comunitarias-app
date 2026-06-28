@@ -6,6 +6,7 @@ import { createPrismaEvidenceRepository } from "@/infrastructure/prisma/evidence
 import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { uploadEvidence } from "@/domain/community/evidence/create-evidence";
 import { getEvidence } from "@/domain/community/evidence/get-evidence";
+import { createSupabaseEvidenceStorageFromEnv } from "@/infrastructure/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -98,6 +99,7 @@ export async function POST(
     // 6. Execute domain service
     const { communityId, incidentId } = await params;
     const evidenceRepository = createPrismaEvidenceRepository(prisma);
+    const evidenceStorage = createSupabaseEvidenceStorageFromEnv();
 
     const result = await uploadEvidence(
       {
@@ -108,7 +110,7 @@ export async function POST(
         mimeType: file.type,
         metadata,
       },
-      { evidenceRepository },
+      { evidenceRepository, evidenceStorage },
     );
 
     // 7. Respond 201
@@ -150,6 +152,7 @@ export async function GET(
     // 3. Execute domain service
     const { communityId, incidentId } = await params;
     const evidenceRepository = createPrismaEvidenceRepository(prisma);
+    const evidenceStorage = createSupabaseEvidenceStorageFromEnv();
 
     const result = await getEvidence(
       {
@@ -157,7 +160,7 @@ export async function GET(
         communityId,
         incidentId,
       },
-      { evidenceRepository },
+      { evidenceRepository, evidenceStorage },
     );
 
     // 4. Respond 200
