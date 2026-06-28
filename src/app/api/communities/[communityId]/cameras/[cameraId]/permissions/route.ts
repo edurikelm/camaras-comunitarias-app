@@ -3,10 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateRequest } from "@/lib/auth";
 import { getPrisma } from "@/lib/prisma";
 import { createPrismaCameraRepository } from "@/infrastructure/prisma/camera-repository";
-import {
-  CommunityAuthorizationError,
-  CommunityInvariantError,
-} from "@/domain/community/errors";
+import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { setCameraPermission } from "@/domain/community/camera/set-camera-permission";
 import type { CommunityMemberRole } from "@/generated/prisma/enums";
 
@@ -91,24 +88,9 @@ export async function POST(
       { status: 200 },
     );
   } catch (error) {
-    if (error instanceof CommunityAuthorizationError) {
-      return NextResponse.json({ error: error.message }, { status: 403 });
-    }
-
-    if (error instanceof CommunityInvariantError) {
-      const status = error.message.toLowerCase().includes("not found")
-        ? 404
-        : 400;
-      return NextResponse.json({ error: error.message }, { status });
-    }
-
-    console.error(
-      "[POST /api/communities/[communityId]/cameras/[cameraId]/permissions] Unexpected error:",
-      error,
-    );
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
+    return mapDomainErrorToResponse(error, {
+      method: "POST",
+      path: "/api/communities/[communityId]/cameras/[cameraId]/permissions",
+    });
   }
 }

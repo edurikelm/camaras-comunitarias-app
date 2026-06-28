@@ -19,3 +19,14 @@ export class CommunityInvariantError extends Error {
     this.name = "CommunityInvariantError";
   }
 }
+
+/**
+ * Thrown when a community-scoped resource is not found
+ * (e.g. camera, incident, membership, invitation, etc.).
+ */
+export class CommunityNotFoundError extends CommunityInvariantError {
+  constructor(message: string) {
+    super(message);
+    this.name = "CommunityNotFoundError";
+  }
+}

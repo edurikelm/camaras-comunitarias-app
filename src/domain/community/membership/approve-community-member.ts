@@ -7,6 +7,7 @@ import {
 import {
   CommunityAuthorizationError,
   CommunityInvariantError,
+  CommunityNotFoundError,
 } from "@/domain/community/errors";
 import type {
   CommunityMembershipRepository,
@@ -81,7 +82,7 @@ export async function approveCommunityMember(
     // 1. Validate community exists and is ACTIVE
     const community = await tx.findCommunityById(communityId);
     if (!community) {
-      throw new CommunityInvariantError("Community not found");
+      throw new CommunityNotFoundError("Community not found");
     }
     if (community.status !== CommunityStatus.ACTIVE) {
       throw new CommunityInvariantError("Community is not active");
@@ -101,7 +102,7 @@ export async function approveCommunityMember(
     // 3. Validate target member exists and is PENDING in the same community
     const targetMember = await tx.findCommunityMemberById(memberId);
     if (!targetMember) {
-      throw new CommunityInvariantError("Member not found");
+      throw new CommunityNotFoundError("Member not found");
     }
     if (targetMember.communityId !== communityId) {
       throw new CommunityInvariantError(

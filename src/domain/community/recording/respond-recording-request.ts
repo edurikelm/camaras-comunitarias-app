@@ -2,6 +2,7 @@ import { AuditAction, RecordingRequestStatus } from "@/generated/prisma/enums";
 import {
   CommunityAuthorizationError,
   CommunityInvariantError,
+  CommunityNotFoundError,
 } from "@/domain/community/errors";
 import type { RecordingRequestRepository } from "./recording-request-repository";
 
@@ -53,7 +54,7 @@ export async function respondRecordingRequest(
     // 1. Find recording request
     const request = await tx.findRecordingRequestById(requestId);
     if (!request) {
-      throw new CommunityInvariantError("Recording request not found");
+      throw new CommunityNotFoundError("Recording request not found");
     }
 
     // Must be PENDING
@@ -66,7 +67,7 @@ export async function respondRecordingRequest(
     // 2. Find camera and verify ownership
     const camera = await tx.findCameraById(request.cameraId);
     if (!camera) {
-      throw new CommunityInvariantError("Camera not found");
+      throw new CommunityNotFoundError("Camera not found");
     }
 
     // Actor must be the camera owner
@@ -84,11 +85,11 @@ export async function respondRecordingRequest(
     // 3. Community must be ACTIVE
     const incident = await tx.findIncidentById(request.incidentId);
     if (!incident) {
-      throw new CommunityInvariantError("Incident not found for recording request");
+      throw new CommunityNotFoundError("Incident not found for recording request");
     }
     const community = await tx.findCommunityById(incident.communityId);
     if (!community) {
-      throw new CommunityInvariantError("Community not found");
+      throw new CommunityNotFoundError("Community not found");
     }
     if (community.status !== "ACTIVE") {
       throw new CommunityInvariantError(

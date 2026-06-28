@@ -4,7 +4,10 @@ import {
   CommunityMemberStatus,
   CommunityStatus,
 } from "@/generated/prisma/enums";
-import { CommunityInvariantError } from "@/domain/community/errors";
+import {
+  CommunityInvariantError,
+  CommunityNotFoundError,
+} from "@/domain/community/errors";
 import type {
   CommunityMembershipRepository,
   CommunityUnitOfWork,
@@ -89,7 +92,7 @@ export async function requestCommunityMembership(
     // 4. Validate community exists and is ACTIVE
     const community = await tx.findCommunityById(invitation.communityId);
     if (!community) {
-      throw new CommunityInvariantError("Community not found");
+      throw new CommunityNotFoundError("Community not found");
     }
     if (community.status !== CommunityStatus.ACTIVE) {
       throw new CommunityInvariantError(

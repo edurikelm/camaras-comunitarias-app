@@ -1,11 +1,13 @@
-import { SignJWT } from "jose";
 import { AuditAction, CameraStatus } from "@/generated/prisma/enums";
 import type { CommunityMemberRole } from "@/generated/prisma/enums";
 import {
   CommunityAuthorizationError,
   CommunityInvariantError,
+  CommunityNotFoundError,
 } from "@/domain/community/errors";
 import type { CameraRepository } from "./camera-repository";
+import { nowHHMM, isWithinSchedule } from "./schedule";
+import type { LiveStreamTokenIssuer } from "./live-stream-token-issuer";
 
 // ---------------------------------------------------------------------------
 // Input / Result
@@ -28,51 +30,8 @@ export type RequestLiveViewTokenResult = {
 
 export type RequestLiveViewTokenDeps = {
   cameraRepository: CameraRepository;
+  liveStreamTokenIssuer: LiveStreamTokenIssuer;
 };
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Returns the current time as an HH:MM string (24h format).
- */
-function nowHHMM(now: Date = new Date()): string {
-  const hh = now.getHours().toString().padStart(2, "0");
-  const mm = now.getMinutes().toString().padStart(2, "0");
-  return `${hh}:${mm}`;
-}
-
-/**
- * Checks whether `currentHHMM` falls within the optional schedule range.
- * Comparison is lexicographic (valid for HH:MM in 24h format).
- * When both start and end are absent the schedule is considered unrestricted.
- */
-function isWithinSchedule(
-  scheduleStart: string | null,
-  scheduleEnd: string | null,
-  currentHHMM: string,
-): boolean {
-  if (!scheduleStart && !scheduleEnd) return true;
-
-  if (scheduleStart && scheduleEnd) {
-    // Overnight schedule: start > end means the range crosses midnight.
-    // e.g. "22:00"–"06:00" permits any time from 22:00 to 23:59 and 00:00 to 06:00.
-    if (scheduleStart > scheduleEnd) {
-      return currentHHMM >= scheduleStart || currentHHMM <= scheduleEnd;
-    }
-    // Normal same-day schedule: start <= end.
-    return currentHHMM >= scheduleStart && currentHHMM <= scheduleEnd;
-  }
-
-  if (scheduleStart && !scheduleEnd) {
-    // Only a lower bound — allow if current >= start.
-    return currentHHMM >= scheduleStart;
-  }
-
-  // Only an upper bound — allow if current <= end.
-  return currentHHMM <= scheduleEnd!;
-}
 
 // ---------------------------------------------------------------------------
 // Service
@@ -80,7 +39,7 @@ function isWithinSchedule(
 
 export async function requestLiveViewToken(
   input: RequestLiveViewTokenInput,
-  { cameraRepository }: RequestLiveViewTokenDeps,
+  { cameraRepository, liveStreamTokenIssuer }: RequestLiveViewTokenDeps,
 ): Promise<RequestLiveViewTokenResult> {
   const cameraId = input.cameraId.trim();
   if (!cameraId) {
@@ -96,7 +55,7 @@ export async function requestLiveViewToken(
     // 1. Verify camera exists and is ACTIVE
     const camera = await tx.findCameraById(cameraId);
     if (!camera) {
-      throw new CommunityInvariantError("Camera not found");
+      throw new CommunityNotFoundError("Camera not found");
     }
     if (camera.status !== CameraStatus.ACTIVE) {
       throw new CommunityInvariantError(
@@ -109,7 +68,7 @@ export async function requestLiveViewToken(
     // 2. Verify community is ACTIVE
     const community = await tx.findCommunityById(communityId);
     if (!community) {
-      throw new CommunityInvariantError("Community not found");
+      throw new CommunityNotFoundError("Community not found");
     }
     if (community.status !== "ACTIVE") {
       throw new CommunityInvariantError("Community is not active");
@@ -133,30 +92,42 @@ export async function requestLiveViewToken(
     let hasViewPermission = isAdmin;
 
     if (!hasViewPermission) {
+      const currentHHMM = nowHHMM();
+
       // Try permission by role first
       const rolePermission = await tx.findPermissionByCameraAndRole(
         cameraId,
         memberRole,
       );
 
-      if (rolePermission && rolePermission.canViewLive) {
-        const currentHHMM = nowHHMM();
-        if (isWithinSchedule(rolePermission.scheduleStart, rolePermission.scheduleEnd, currentHHMM)) {
-          hasViewPermission = true;
-        }
+      if (
+        rolePermission &&
+        rolePermission.canViewLive &&
+        isWithinSchedule(
+          rolePermission.scheduleStart,
+          rolePermission.scheduleEnd,
+          currentHHMM,
+        )
+      ) {
+        hasViewPermission = true;
       }
-    }
 
-    if (!hasViewPermission) {
       // Try permission by user
-      const userPermission = await tx.findPermissionByCameraAndUser(
-        cameraId,
-        actorId,
-      );
+      if (!hasViewPermission) {
+        const userPermission = await tx.findPermissionByCameraAndUser(
+          cameraId,
+          actorId,
+        );
 
-      if (userPermission && userPermission.canViewLive) {
-        const currentHHMM = nowHHMM();
-        if (isWithinSchedule(userPermission.scheduleStart, userPermission.scheduleEnd, currentHHMM)) {
+        if (
+          userPermission &&
+          userPermission.canViewLive &&
+          isWithinSchedule(
+            userPermission.scheduleStart,
+            userPermission.scheduleEnd,
+            currentHHMM,
+          )
+        ) {
           hasViewPermission = true;
         }
       }
@@ -168,37 +139,19 @@ export async function requestLiveViewToken(
       );
     }
 
-    // 5. Generate JWT
-    const streamSecret = process.env.CAMERA_STREAM_SECRET;
-    if (!streamSecret) {
-      throw new Error(
-        "CAMERA_STREAM_SECRET environment variable is not configured",
-      );
-    }
-
+    // 5. Issue token via the adapter
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
-    const secret = new TextEncoder().encode(streamSecret);
-    const jwt = await new SignJWT({ cameraId, userId: actorId })
-      .setProtectedHeader({ alg: "HS256" })
-      .setIssuedAt()
-      .setExpirationTime("1h")
-      .sign(secret);
+    const issued = await liveStreamTokenIssuer.issue({
+      cameraId,
+      userId: actorId,
+      expiresAt,
+    });
 
-    // 6. Build stream URL
-    const mediaServerUrl = process.env.NEXT_PUBLIC_MEDIA_SERVER_URL;
-    if (!mediaServerUrl) {
-      throw new Error(
-        "NEXT_PUBLIC_MEDIA_SERVER_URL environment variable is not configured",
-      );
-    }
-
-    const streamUrl = `${mediaServerUrl}/stream/${cameraId}?token=${jwt}`;
-
-    // 7. Audit
+    // 6. Audit
     await tx.createAuditLog({
       communityId,
-      actorId: actorId,
+      actorId,
       action: AuditAction.CAMERA_LIVE_VIEWED,
       entityType: "Camera",
       entityId: cameraId,
@@ -207,10 +160,6 @@ export async function requestLiveViewToken(
       },
     });
 
-    return {
-      streamUrl,
-      token: jwt,
-      expiresAt,
-    };
+    return issued;
   });
 }

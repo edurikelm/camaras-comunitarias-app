@@ -2,6 +2,7 @@ import { AuditAction, CameraStatus } from "@/generated/prisma/enums";
 import {
   CommunityAuthorizationError,
   CommunityInvariantError,
+  CommunityNotFoundError,
 } from "@/domain/community/errors";
 import type { CameraRepository } from "./camera-repository";
 
@@ -79,7 +80,7 @@ export async function registerCommunityCamera(
     // 1. Validate community exists and is ACTIVE
     const community = await tx.findCommunityById(communityId);
     if (!community) {
-      throw new CommunityInvariantError("Community not found");
+      throw new CommunityNotFoundError("Community not found");
     }
     if (community.status !== "ACTIVE") {
       throw new CommunityInvariantError("Community is not active");

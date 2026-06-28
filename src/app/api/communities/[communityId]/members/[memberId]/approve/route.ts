@@ -4,10 +4,7 @@ import { authenticateRequest } from "@/lib/auth";
 import { getPrisma } from "@/lib/prisma";
 import { CommunityMemberRole } from "@/generated/prisma/enums";
 import { createPrismaCommunityMembershipRepository } from "@/infrastructure/prisma/community-membership-repository";
-import {
-  CommunityAuthorizationError,
-  CommunityInvariantError,
-} from "@/domain/community/errors";
+import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { approveCommunityMember } from "@/domain/community/membership/approve-community-member";
 
 export const dynamic = "force-dynamic";
@@ -65,21 +62,9 @@ export async function PATCH(
     // 5. Respond 200
     return NextResponse.json({ data: { member: result.member } }, { status: 200 });
   } catch (error) {
-    if (error instanceof CommunityAuthorizationError) {
-      return NextResponse.json({ error: error.message }, { status: 403 });
-    }
-
-    if (error instanceof CommunityInvariantError) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
-    console.error(
-      "[PATCH /api/communities/[communityId]/members/[memberId]/approve] Unexpected error:",
-      error,
-    );
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
+    return mapDomainErrorToResponse(error, {
+      method: "PATCH",
+      path: "/api/communities/[communityId]/members/[memberId]/approve",
+    });
   }
 }

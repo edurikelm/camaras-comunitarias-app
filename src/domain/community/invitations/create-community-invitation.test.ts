@@ -7,6 +7,7 @@ import {
 } from "@/generated/prisma/enums";
 import { createCommunityInvitation } from "./create-community-invitation";
 import type { CommunityMembershipRepository } from "@/domain/community/community-repository";
+import { CommunityNotFoundError } from "@/domain/community/errors";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -129,7 +130,7 @@ describe("createCommunityInvitation", () => {
 
     await expect(
       createCommunityInvitation(validInput, { repository }),
-    ).rejects.toThrow("Community not found");
+    ).rejects.toThrow(CommunityNotFoundError);
 
     expect(repository.createCommunityInvitation).not.toHaveBeenCalled();
     expect(repository.createAuditLog).not.toHaveBeenCalled();

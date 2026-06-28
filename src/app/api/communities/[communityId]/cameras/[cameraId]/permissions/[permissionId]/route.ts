@@ -3,10 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateRequest } from "@/lib/auth";
 import { getPrisma } from "@/lib/prisma";
 import { createPrismaCameraRepository } from "@/infrastructure/prisma/camera-repository";
-import {
-  CommunityAuthorizationError,
-  CommunityInvariantError,
-} from "@/domain/community/errors";
+import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { removeCameraPermission } from "@/domain/community/camera/remove-camera-permission";
 
 export const dynamic = "force-dynamic";
@@ -61,24 +58,9 @@ export async function DELETE(
       { status: 200 },
     );
   } catch (error) {
-    if (error instanceof CommunityAuthorizationError) {
-      return NextResponse.json({ error: error.message }, { status: 403 });
-    }
-
-    if (error instanceof CommunityInvariantError) {
-      const status = error.message.toLowerCase().includes("not found")
-        ? 404
-        : 400;
-      return NextResponse.json({ error: error.message }, { status });
-    }
-
-    console.error(
-      "[DELETE /api/communities/[communityId]/cameras/[cameraId]/permissions/[permissionId]] Unexpected error:",
-      error,
-    );
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
+    return mapDomainErrorToResponse(error, {
+      method: "DELETE",
+      path: "/api/communities/[communityId]/cameras/[cameraId]/permissions/[permissionId]",
+    });
   }
 }

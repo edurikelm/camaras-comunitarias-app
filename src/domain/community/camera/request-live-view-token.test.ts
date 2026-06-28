@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeAll } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   AuditAction,
   CameraStatus,
@@ -7,36 +7,7 @@ import {
 } from "@/generated/prisma/enums";
 import { requestLiveViewToken } from "./request-live-view-token";
 import type { CameraRepository } from "./camera-repository";
-
-// ---------------------------------------------------------------------------
-// Mock jose so we never need a real signing key in tests
-// ---------------------------------------------------------------------------
-
-vi.mock("jose", () => ({
-  SignJWT: class {
-    setProtectedHeader() {
-      return this;
-    }
-    setIssuedAt() {
-      return this;
-    }
-    setExpirationTime() {
-      return this;
-    }
-    async sign() {
-      return "test-jwt-token";
-    }
-  },
-}));
-
-// ---------------------------------------------------------------------------
-// Default env vars
-// ---------------------------------------------------------------------------
-
-beforeAll(() => {
-  process.env.CAMERA_STREAM_SECRET = "test-stream-secret-at-least-32-chars!!";
-  process.env.NEXT_PUBLIC_MEDIA_SERVER_URL = "https://media.example.com";
-});
+import type { LiveStreamTokenIssuer } from "./live-stream-token-issuer";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -131,6 +102,16 @@ function createRepository(
   return repository;
 }
 
+function createMockIssuer() {
+  return {
+    issue: vi.fn(async ({ cameraId }: { cameraId: string; userId: string; expiresAt: Date }) => ({
+      streamUrl: `https://media.example.com/stream/${cameraId}?token=test-jwt-token`,
+      token: "test-jwt-token",
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    })),
+  } as unknown as LiveStreamTokenIssuer;
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -154,10 +135,11 @@ describe("requestLiveViewToken", () => {
         return null;
       }),
     });
+    const mockIssuer = createMockIssuer();
 
     const result = await requestLiveViewToken(
       { actor: { id: "user-neighbor-1" }, cameraId: "camera-active-1" },
-      { cameraRepository: repository },
+      { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
     );
 
     expect(result.token).toBe("test-jwt-token");
@@ -196,10 +178,11 @@ describe("requestLiveViewToken", () => {
         return null;
       }),
     });
+    const mockIssuer = createMockIssuer();
 
     const result = await requestLiveViewToken(
       { actor: { id: "user-guard-1" }, cameraId: "camera-active-1" },
-      { cameraRepository: repository },
+      { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
     );
 
     expect(result.token).toBe("test-jwt-token");
@@ -227,10 +210,11 @@ describe("requestLiveViewToken", () => {
         return null;
       }),
     });
+    const mockIssuer = createMockIssuer();
 
     const result = await requestLiveViewToken(
       { actor: { id: "user-neighbor-1" }, cameraId: "camera-active-1" },
-      { cameraRepository: repository },
+      { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
     );
 
     expect(result.token).toBe("test-jwt-token");
@@ -239,10 +223,11 @@ describe("requestLiveViewToken", () => {
 
   it("ADMIN de comunidad genera token sin necesidad de permiso configurado", async () => {
     const repository = createRepository();
+    const mockIssuer = createMockIssuer();
 
     const result = await requestLiveViewToken(
       { actor: { id: "user-admin-1" }, cameraId: "camera-active-1" },
-      { cameraRepository: repository },
+      { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
     );
 
     expect(result.token).toBe("test-jwt-token");
@@ -262,11 +247,12 @@ describe("requestLiveViewToken", () => {
       findActiveNeighborOrGuardMember: vi.fn(async () => null),
       findActiveAdminMember: vi.fn(async () => null),
     });
+    const mockIssuer = createMockIssuer();
 
     await expect(
       requestLiveViewToken(
         { actor: { id: "user-non-member" }, cameraId: "camera-active-1" },
-        { cameraRepository: repository },
+        { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
       ),
     ).rejects.toThrow("Only ACTIVE community members can view live streams");
 
@@ -275,11 +261,12 @@ describe("requestLiveViewToken", () => {
 
   it("rechaza si la camara no existe", async () => {
     const repository = createRepository();
+    const mockIssuer = createMockIssuer();
 
     await expect(
       requestLiveViewToken(
         { actor: { id: "user-neighbor-1" }, cameraId: "nonexistent" },
-        { cameraRepository: repository },
+        { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
       ),
     ).rejects.toThrow("Camera not found");
 
@@ -288,11 +275,12 @@ describe("requestLiveViewToken", () => {
 
   it("rechaza si la camara no es ACTIVE", async () => {
     const repository = createRepository();
+    const mockIssuer = createMockIssuer();
 
     await expect(
       requestLiveViewToken(
         { actor: { id: "user-neighbor-1" }, cameraId: "camera-inactive-1" },
-        { cameraRepository: repository },
+        { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
       ),
     ).rejects.toThrow("Camera is not available for live viewing");
 
@@ -304,11 +292,12 @@ describe("requestLiveViewToken", () => {
       findPermissionByCameraAndRole: vi.fn(async () => null),
       findPermissionByCameraAndUser: vi.fn(async () => null),
     });
+    const mockIssuer = createMockIssuer();
 
     await expect(
       requestLiveViewToken(
         { actor: { id: "user-neighbor-1" }, cameraId: "camera-active-1" },
-        { cameraRepository: repository },
+        { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
       ),
     ).rejects.toThrow(
       "You do not have permission to view this camera's live stream",
@@ -331,11 +320,12 @@ describe("requestLiveViewToken", () => {
       })),
       findPermissionByCameraAndUser: vi.fn(async () => null),
     });
+    const mockIssuer = createMockIssuer();
 
     await expect(
       requestLiveViewToken(
         { actor: { id: "user-neighbor-1" }, cameraId: "camera-active-1" },
-        { cameraRepository: repository },
+        { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
       ),
     ).rejects.toThrow(
       "You do not have permission to view this camera's live stream",
@@ -356,6 +346,43 @@ describe("requestLiveViewToken", () => {
       return d;
     }
 
+    it("rechaza si canViewLive = false aun cuando el schedule esta vigente", async () => {
+      // Regression test para el guard `canViewLive && isWithinSchedule(...)`.
+      // Si en el futuro se elimina el guard `canViewLive &&`, este test falla
+      // porque el schedule vigente autorizaria la vista indebidamente.
+      // Current local time: 14:00 — schedule 09:00-17:00 (dentro de horario)
+      vi.useFakeTimers();
+      vi.setSystemTime(localDate(14, 0));
+
+      const repository = createRepository({
+        findPermissionByCameraAndRole: vi.fn(async () => ({
+          id: "permission-canViewFalse-with-schedule",
+          cameraId: "camera-active-1",
+          roleAllowed: CommunityMemberRole.NEIGHBOR,
+          userIdAllowed: null,
+          canViewLive: false,
+          canRequestRecordings: true,
+          scheduleStart: "09:00",
+          scheduleEnd: "17:00",
+        })),
+        findPermissionByCameraAndUser: vi.fn(async () => null),
+      });
+      const mockIssuer = createMockIssuer();
+
+      await expect(
+        requestLiveViewToken(
+          { actor: { id: "user-neighbor-1" }, cameraId: "camera-active-1" },
+          { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
+        ),
+      ).rejects.toThrow(
+        "You do not have permission to view this camera's live stream",
+      );
+
+      expect(repository.createAuditLog).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
     it("rechaza si permiso tiene scheduleStart > hora actual (fuera de horario)", async () => {
       // Current local time: 14:00 — schedule starts at 15:00
       vi.useFakeTimers();
@@ -374,11 +401,12 @@ describe("requestLiveViewToken", () => {
         })),
         findPermissionByCameraAndUser: vi.fn(async () => null),
       });
+      const mockIssuer = createMockIssuer();
 
       await expect(
         requestLiveViewToken(
           { actor: { id: "user-neighbor-1" }, cameraId: "camera-active-1" },
-          { cameraRepository: repository },
+          { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
         ),
       ).rejects.toThrow(
         "You do not have permission to view this camera's live stream",
@@ -405,11 +433,12 @@ describe("requestLiveViewToken", () => {
         })),
         findPermissionByCameraAndUser: vi.fn(async () => null),
       });
+      const mockIssuer = createMockIssuer();
 
       await expect(
         requestLiveViewToken(
           { actor: { id: "user-neighbor-1" }, cameraId: "camera-active-1" },
-          { cameraRepository: repository },
+          { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
         ),
       ).rejects.toThrow(
         "You do not have permission to view this camera's live stream",
@@ -436,10 +465,11 @@ describe("requestLiveViewToken", () => {
         })),
         findPermissionByCameraAndUser: vi.fn(async () => null),
       });
+      const mockIssuer = createMockIssuer();
 
       const result = await requestLiveViewToken(
         { actor: { id: "user-neighbor-1" }, cameraId: "camera-active-1" },
-        { cameraRepository: repository },
+        { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
       );
 
       expect(result.token).toBe("test-jwt-token");
@@ -461,10 +491,11 @@ describe("requestLiveViewToken", () => {
         })),
         findPermissionByCameraAndUser: vi.fn(async () => null),
       });
+      const mockIssuer = createMockIssuer();
 
       const result = await requestLiveViewToken(
         { actor: { id: "user-neighbor-1" }, cameraId: "camera-active-1" },
-        { cameraRepository: repository },
+        { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
       );
 
       expect(result.token).toBe("test-jwt-token");
@@ -488,10 +519,11 @@ describe("requestLiveViewToken", () => {
         })),
         findPermissionByCameraAndUser: vi.fn(async () => null),
       });
+      const mockIssuer = createMockIssuer();
 
       const result = await requestLiveViewToken(
         { actor: { id: "user-neighbor-1" }, cameraId: "camera-active-1" },
-        { cameraRepository: repository },
+        { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
       );
 
       expect(result.token).toBe("test-jwt-token");
@@ -517,11 +549,12 @@ describe("requestLiveViewToken", () => {
         })),
         findPermissionByCameraAndUser: vi.fn(async () => null),
       });
+      const mockIssuer = createMockIssuer();
 
       await expect(
         requestLiveViewToken(
           { actor: { id: "user-neighbor-1" }, cameraId: "camera-active-1" },
-          { cameraRepository: repository },
+          { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
         ),
       ).rejects.toThrow(
         "You do not have permission to view this camera's live stream",
@@ -548,10 +581,11 @@ describe("requestLiveViewToken", () => {
         })),
         findPermissionByCameraAndUser: vi.fn(async () => null),
       });
+      const mockIssuer = createMockIssuer();
 
       const result = await requestLiveViewToken(
         { actor: { id: "user-neighbor-1" }, cameraId: "camera-active-1" },
-        { cameraRepository: repository },
+        { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
       );
 
       expect(result.token).toBe("test-jwt-token");
@@ -577,11 +611,12 @@ describe("requestLiveViewToken", () => {
         })),
         findPermissionByCameraAndUser: vi.fn(async () => null),
       });
+      const mockIssuer = createMockIssuer();
 
       await expect(
         requestLiveViewToken(
           { actor: { id: "user-neighbor-1" }, cameraId: "camera-active-1" },
-          { cameraRepository: repository },
+          { cameraRepository: repository, liveStreamTokenIssuer: mockIssuer },
         ),
       ).rejects.toThrow(
         "You do not have permission to view this camera's live stream",

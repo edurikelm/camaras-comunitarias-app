@@ -3,10 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateRequest } from "@/lib/auth";
 import { getPrisma } from "@/lib/prisma";
 import { createPrismaCameraRepository } from "@/infrastructure/prisma/camera-repository";
-import {
-  CommunityAuthorizationError,
-  CommunityInvariantError,
-} from "@/domain/community/errors";
+import { createLiveStreamTokenIssuerFromEnv } from "@/infrastructure/streaming";
+import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { requestLiveViewToken } from "@/domain/community/camera/request-live-view-token";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +40,7 @@ export async function GET(
         actor: { id: platformUser.id },
         cameraId,
       },
-      { cameraRepository },
+      { cameraRepository, liveStreamTokenIssuer: createLiveStreamTokenIssuerFromEnv() },
     );
 
     // 4. Respond 200
@@ -55,24 +53,9 @@ export async function GET(
       { status: 200 },
     );
   } catch (error) {
-    if (error instanceof CommunityAuthorizationError) {
-      return NextResponse.json({ error: error.message }, { status: 403 });
-    }
-
-    if (error instanceof CommunityInvariantError) {
-      const status = error.message.toLowerCase().includes("not found")
-        ? 404
-        : 400;
-      return NextResponse.json({ error: error.message }, { status });
-    }
-
-    console.error(
-      "[GET /api/cameras/[cameraId]/live] Unexpected error:",
-      error,
-    );
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
+    return mapDomainErrorToResponse(error, {
+      method: "GET",
+      path: "/api/cameras/[cameraId]/live",
+    });
   }
 }

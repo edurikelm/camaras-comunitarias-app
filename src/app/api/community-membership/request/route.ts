@@ -3,10 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateRequest } from "@/lib/auth";
 import { getPrisma } from "@/lib/prisma";
 import { createPrismaCommunityMembershipRepository } from "@/infrastructure/prisma/community-membership-repository";
-import {
-  CommunityAuthorizationError,
-  CommunityInvariantError,
-} from "@/domain/community/errors";
+import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { requestCommunityMembership } from "@/domain/community/membership/request-community-membership";
 
 export const dynamic = "force-dynamic";
@@ -58,21 +55,9 @@ export async function POST(request: NextRequest) {
     // 5. Respond 201
     return NextResponse.json({ data: { member: result.member } }, { status: 201 });
   } catch (error) {
-    if (error instanceof CommunityAuthorizationError) {
-      return NextResponse.json({ error: error.message }, { status: 403 });
-    }
-
-    if (error instanceof CommunityInvariantError) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
-    console.error(
-      "[POST /api/community-membership/request] Unexpected error:",
-      error,
-    );
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
+    return mapDomainErrorToResponse(error, {
+      method: "POST",
+      path: "/api/community-membership/request",
+    });
   }
 }

@@ -2,6 +2,7 @@ import { AuditAction, CommunityStatus } from "@/generated/prisma/enums";
 import {
   CommunityAuthorizationError,
   CommunityInvariantError,
+  CommunityNotFoundError,
 } from "@/domain/community/errors";
 import type {
   CommunityMembershipRepository,
@@ -69,7 +70,7 @@ export async function createCommunityInvitation(
     // 2. Validate community exists and is ACTIVE
     const community = await tx.findCommunityById(communityId);
     if (!community) {
-      throw new CommunityInvariantError("Community not found");
+      throw new CommunityNotFoundError("Community not found");
     }
     if (community.status !== CommunityStatus.ACTIVE) {
       throw new CommunityInvariantError("Community is not active");

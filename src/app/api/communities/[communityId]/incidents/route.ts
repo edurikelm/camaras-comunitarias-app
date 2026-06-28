@@ -3,10 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateRequest } from "@/lib/auth";
 import { getPrisma } from "@/lib/prisma";
 import { createPrismaIncidentRepository } from "@/infrastructure/prisma/incident-repository";
-import {
-  CommunityAuthorizationError,
-  CommunityInvariantError,
-} from "@/domain/community/errors";
+import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { createIncident } from "@/domain/community/incident/create-incident";
 import { IncidentType } from "@/generated/prisma/enums";
 
@@ -106,24 +103,9 @@ export async function POST(
       { status: 201 },
     );
   } catch (error) {
-    if (error instanceof CommunityAuthorizationError) {
-      return NextResponse.json({ error: error.message }, { status: 403 });
-    }
-
-    if (error instanceof CommunityInvariantError) {
-      const status = error.message.toLowerCase().includes("not found")
-        ? 404
-        : 400;
-      return NextResponse.json({ error: error.message }, { status });
-    }
-
-    console.error(
-      "[POST /api/communities/[communityId]/incidents] Unexpected error:",
-      error,
-    );
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
+    return mapDomainErrorToResponse(error, {
+      method: "POST",
+      path: "/api/communities/[communityId]/incidents",
+    });
   }
 }

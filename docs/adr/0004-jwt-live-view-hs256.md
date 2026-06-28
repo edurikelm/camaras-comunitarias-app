@@ -43,5 +43,5 @@ El stream URL se arma en Next.js: `{NEXT_PUBLIC_MEDIA_SERVER_URL}/stream/{camera
 
 ## Implementation
 
-`src/domain/community/camera/request-live-view-token.ts` genera el JWT con `jose`.
+`src/domain/community/camera/request-live-view-token.ts` delega la generación del JWT al adaptador `src/infrastructure/streaming/jose-live-stream-token-issuer.ts`, que implementa la interfaz `LiveStreamTokenIssuer` usando `jose.SignJWT`. El factory `src/infrastructure/streaming/index.ts` construye el issuer a partir de `CAMERA_STREAM_SECRET` y `NEXT_PUBLIC_MEDIA_SERVER_URL`.
 MediaMTX se configura con la misma `CAMERA_STREAM_SECRET` y valida JWT en cada conexión.

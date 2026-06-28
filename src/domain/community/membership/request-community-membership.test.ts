@@ -7,6 +7,7 @@ import {
 } from "@/generated/prisma/enums";
 import { requestCommunityMembership } from "./request-community-membership";
 import type { CommunityMembershipRepository } from "@/domain/community/community-repository";
+import { CommunityNotFoundError } from "@/domain/community/errors";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -238,6 +239,22 @@ describe("requestCommunityMembership", () => {
         hashCode: () => FIXED_CODE_HASH,
       }),
     ).rejects.toThrow("Community is not accepting new members");
+
+    expect(repository.markInvitationUsedIfAvailable).not.toHaveBeenCalled();
+    expect(repository.createCommunityMember).not.toHaveBeenCalled();
+  });
+
+  it("rechaza si la comunidad no existe", async () => {
+    const repository = createRepository({
+      findCommunityById: vi.fn(async () => null),
+    });
+
+    await expect(
+      requestCommunityMembership(validInput, {
+        repository,
+        hashCode: () => FIXED_CODE_HASH,
+      }),
+    ).rejects.toThrow(CommunityNotFoundError);
 
     expect(repository.markInvitationUsedIfAvailable).not.toHaveBeenCalled();
     expect(repository.createCommunityMember).not.toHaveBeenCalled();

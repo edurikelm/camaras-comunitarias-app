@@ -6,8 +6,10 @@ import {
 import {
   CommunityAuthorizationError,
   CommunityInvariantError,
+  CommunityNotFoundError,
 } from "@/domain/community/errors";
 import type { CameraRepository } from "./camera-repository";
+import { isValidHHMM } from "./schedule";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -55,12 +57,6 @@ export type SetCameraPermissionResult = {
 export type SetCameraPermissionDeps = {
   cameraRepository: CameraRepository;
 };
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-const HH_MM_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 // ---------------------------------------------------------------------------
 // Service
@@ -113,12 +109,12 @@ export async function setCameraPermission(
   const scheduleStart = input.permission.scheduleStart?.trim() || null;
   const scheduleEnd = input.permission.scheduleEnd?.trim() || null;
 
-  if (scheduleStart && !HH_MM_REGEX.test(scheduleStart)) {
+  if (scheduleStart && !isValidHHMM(scheduleStart)) {
     throw new CommunityInvariantError(
       "scheduleStart must be in HH:MM format",
     );
   }
-  if (scheduleEnd && !HH_MM_REGEX.test(scheduleEnd)) {
+  if (scheduleEnd && !isValidHHMM(scheduleEnd)) {
     throw new CommunityInvariantError(
       "scheduleEnd must be in HH:MM format",
     );
@@ -133,7 +129,7 @@ export async function setCameraPermission(
     // 1. Validate community exists and is ACTIVE
     const community = await tx.findCommunityById(communityId);
     if (!community) {
-      throw new CommunityInvariantError("Community not found");
+      throw new CommunityNotFoundError("Community not found");
     }
     if (community.status !== "ACTIVE") {
       throw new CommunityInvariantError("Community is not active");
@@ -155,7 +151,7 @@ export async function setCameraPermission(
     // 3. Validate camera exists and belongs to this community
     const camera = await tx.findCameraById(cameraId);
     if (!camera) {
-      throw new CommunityInvariantError("Camera not found");
+      throw new CommunityNotFoundError("Camera not found");
     }
     if (camera.communityId !== communityId) {
       throw new CommunityInvariantError(

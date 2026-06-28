@@ -2,6 +2,7 @@ import { AuditAction, CameraStatus } from "@/generated/prisma/enums";
 import {
   CommunityAuthorizationError,
   CommunityInvariantError,
+  CommunityNotFoundError,
 } from "@/domain/community/errors";
 import type { CameraRepository } from "./camera-repository";
 
@@ -59,7 +60,7 @@ export async function removeCameraPermission(
     // 1. Validate community exists and is ACTIVE
     const community = await tx.findCommunityById(communityId);
     if (!community) {
-      throw new CommunityInvariantError("Community not found");
+      throw new CommunityNotFoundError("Community not found");
     }
     if (community.status !== "ACTIVE") {
       throw new CommunityInvariantError("Community is not active");
@@ -81,7 +82,7 @@ export async function removeCameraPermission(
     // 3. Validate camera exists, belongs to this community, and is ACTIVE
     const camera = await tx.findCameraById(cameraId);
     if (!camera) {
-      throw new CommunityInvariantError("Camera not found");
+      throw new CommunityNotFoundError("Camera not found");
     }
     if (camera.communityId !== communityId) {
       throw new CommunityInvariantError(
@@ -104,7 +105,7 @@ export async function removeCameraPermission(
     // 5. Validate permission exists and belongs to this camera
     const permission = await tx.findPermissionById(permissionId);
     if (!permission) {
-      throw new CommunityInvariantError("Permission not found");
+      throw new CommunityNotFoundError("Permission not found");
     }
     if (permission.cameraId !== cameraId) {
       throw new CommunityInvariantError(
@@ -115,7 +116,7 @@ export async function removeCameraPermission(
     // 6. Delete
     const deleted = await tx.deleteCameraPermission(permissionId);
     if (!deleted) {
-      throw new CommunityInvariantError("Permission not found");
+      throw new CommunityNotFoundError("Permission not found");
     }
 
     // 7. Audit

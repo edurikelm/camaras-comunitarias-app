@@ -7,6 +7,7 @@ import {
 } from "@/generated/prisma/enums";
 import { approveCommunityMember } from "./approve-community-member";
 import type { CommunityMembershipRepository } from "@/domain/community/community-repository";
+import { CommunityNotFoundError } from "@/domain/community/errors";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -134,7 +135,7 @@ describe("approveCommunityMember", () => {
 
     await expect(
       approveCommunityMember(validInput, { repository }),
-    ).rejects.toThrow("Member not found");
+    ).rejects.toThrow(CommunityNotFoundError);
 
     expect(repository.updateCommunityMember).not.toHaveBeenCalled();
   });
