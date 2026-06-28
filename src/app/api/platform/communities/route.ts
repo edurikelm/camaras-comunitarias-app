@@ -2,13 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { authenticateRequest } from "@/lib/auth";
 import { getPrisma } from "@/lib/prisma";
+import { mapDomainErrorToResponse } from "@/lib/api/domain-error-mapper";
 import { PlatformRole } from "@/generated/prisma/enums";
 import { createPrismaPlatformCommunityRepository } from "@/infrastructure/prisma/platform-community-repository";
-import {
-  PlatformAuthorizationError,
-  CommunityCreationInvariantError,
-  createCommunityWithFirstAdmin,
-} from "@/domain/platform/create-community-with-first-admin";
+import { createCommunityWithFirstAdmin } from "@/domain/platform/create-community-with-first-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -107,24 +104,9 @@ export async function POST(request: NextRequest) {
       { status: 201 },
     );
   } catch (error) {
-    if (error instanceof PlatformAuthorizationError) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 403 },
-      );
-    }
-
-    if (error instanceof CommunityCreationInvariantError) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 400 },
-      );
-    }
-
-    console.error("[POST /api/platform/communities] Unexpected error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
-    );
+    return mapDomainErrorToResponse(error, {
+      method: "POST",
+      path: "/api/platform/communities",
+    });
   }
 }

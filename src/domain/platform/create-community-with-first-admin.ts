@@ -6,15 +6,33 @@ import {
   PlatformRole,
   type PlatformRole as PlatformRoleValue,
 } from "../../generated/prisma/enums";
+import {
+  CommunityAuthorizationError,
+  CommunityInvariantError,
+} from "@/domain/community/errors";
 
-export class PlatformAuthorizationError extends Error {
+/**
+ * Platform-scoped authorization failure (actor lacks PLATFORM_ADMIN role).
+ *
+ * Extends `CommunityAuthorizationError` so the shared `DomainErrorMapper`
+ * (see ADR-0007 + ADR-0009) maps it to HTTP 403 via `instanceof`. Keeping
+ * the subclass preserves semantic locality: callers and logs see
+ * `PlatformAuthorizationError` as the name, while the mapper recognizes the
+ * parent class.
+ */
+export class PlatformAuthorizationError extends CommunityAuthorizationError {
   constructor(message = "Only PLATFORM_ADMIN can create communities") {
     super(message);
     this.name = "PlatformAuthorizationError";
   }
 }
 
-export class CommunityCreationInvariantError extends Error {
+/**
+ * Invariant violation during community creation flow at the platform level
+ * (e.g. malformed UUID, duplicate membership). Extends `CommunityInvariantError`
+ * so the shared mapper maps it to HTTP 400.
+ */
+export class CommunityCreationInvariantError extends CommunityInvariantError {
   constructor(message: string) {
     super(message);
     this.name = "CommunityCreationInvariantError";

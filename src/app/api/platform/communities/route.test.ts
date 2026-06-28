@@ -17,28 +17,10 @@ const { mockPrismaFindUnique } = vi.hoisted(() => ({
 
 const {
   mockCreateCommunityWithFirstAdmin,
-  MockPlatformAuthorizationError,
-  MockCommunityCreationInvariantError,
   mockPrismaTransaction,
 } = vi.hoisted(() => {
-  class PlatformAuthError extends Error {
-    override name = "PlatformAuthorizationError";
-    constructor(m = "Only PLATFORM_ADMIN can create communities") {
-      super(m);
-    }
-  }
-
-  class CommunityInvariantError extends Error {
-    override name = "CommunityCreationInvariantError";
-    constructor(m: string) {
-      super(m);
-    }
-  }
-
   return {
     mockCreateCommunityWithFirstAdmin: vi.fn(),
-    MockPlatformAuthorizationError: PlatformAuthError,
-    MockCommunityCreationInvariantError: CommunityInvariantError,
     mockPrismaTransaction: vi.fn(),
   };
 });
@@ -69,17 +51,32 @@ vi.mock("@/infrastructure/prisma/platform-community-repository", () => ({
   })),
 }));
 
-vi.mock("@/domain/platform/create-community-with-first-admin", () => ({
-  createCommunityWithFirstAdmin: mockCreateCommunityWithFirstAdmin,
-  PlatformAuthorizationError: MockPlatformAuthorizationError,
-  CommunityCreationInvariantError: MockCommunityCreationInvariantError,
-}));
+vi.mock("@/domain/platform/create-community-with-first-admin", async () => {
+  // Preserve the real error classes so the test exercises the actual
+  // inheritance chain (PlatformAuthorizationError extends
+  // CommunityAuthorizationError) and the real DomainErrorMapper.
+  const actual = await vi.importActual<
+    typeof import("@/domain/platform/create-community-with-first-admin")
+  >("@/domain/platform/create-community-with-first-admin");
+  return {
+    ...actual,
+    createCommunityWithFirstAdmin: mockCreateCommunityWithFirstAdmin,
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Subject under test
 // ---------------------------------------------------------------------------
 
 import { POST } from "./route";
+import {
+  CommunityAuthorizationError,
+  CommunityInvariantError,
+} from "@/domain/community/errors";
+import {
+  CommunityCreationInvariantError,
+  PlatformAuthorizationError,
+} from "@/domain/platform/create-community-with-first-admin";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -212,7 +209,7 @@ describe("POST /api/platform/communities", () => {
       platformRole: "PLATFORM_ADMIN",
     });
     mockCreateCommunityWithFirstAdmin.mockRejectedValue(
-      new MockCommunityCreationInvariantError("Community name is required"),
+      new CommunityCreationInvariantError("Community name is required"),
     );
 
     // Act
@@ -232,7 +229,7 @@ describe("POST /api/platform/communities", () => {
       platformRole: "PLATFORM_ADMIN",
     });
     mockCreateCommunityWithFirstAdmin.mockRejectedValue(
-      new MockPlatformAuthorizationError("Only PLATFORM_ADMIN can create communities"),
+      new PlatformAuthorizationError("Only PLATFORM_ADMIN can create communities"),
     );
 
     // Act
@@ -242,6 +239,25 @@ describe("POST /api/platform/communities", () => {
     // Assert
     expect(response.status).toBe(403);
     expect(body.error).toBe("Only PLATFORM_ADMIN can create communities");
+  });
+
+  it("verifica que PlatformAuthorizationError extiende CommunityAuthorizationError (cadena de herencia real)", () => {
+    // Esta es la garantia del refactor: el mapper reconoce PlatformAuthorizationError
+    // unicamente gracias a que extiende CommunityAuthorizationError. Si alguien rompe
+    // la cadena en el futuro, este test falla antes de que el mapper mapee mal.
+    const authError = new PlatformAuthorizationError();
+    const invariantError = new CommunityCreationInvariantError("x");
+
+    // La cadena de herencia que el mapper recorre via instanceof.
+    expect(authError).toBeInstanceOf(CommunityAuthorizationError);
+    expect(authError).toBeInstanceOf(Error);
+
+    expect(invariantError).toBeInstanceOf(CommunityInvariantError);
+    expect(invariantError).toBeInstanceOf(Error);
+
+    // El nombre se preserva para los logs (no se sobreescribe con el del padre).
+    expect(authError.name).toBe("PlatformAuthorizationError");
+    expect(invariantError.name).toBe("CommunityCreationInvariantError");
   });
 
   it("responde 500 para errores inesperados del dominio", async () => {

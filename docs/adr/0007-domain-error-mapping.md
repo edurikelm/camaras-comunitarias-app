@@ -37,7 +37,7 @@ La auditoria del arquitecto identifico que la logica de string matching no es ne
 
 6. Logging: `console.error` directo con prefijo `[METHOD path]` (un solo consumer, no se introduce interfaz Logger).
 
-7. Out of scope: `platform/communities/route.ts` usa `PlatformAuthorizationError` y `CommunityCreationInvariantError` (clases distintas). `register/route.ts` no usa errores de dominio.
+7. Out of scope (resuelto por ADR-0009): `platform/communities/route.ts` usaba `PlatformAuthorizationError` y `CommunityCreationInvariantError` (clases distintas). ADR-0009 realinea esas clases para extender las del dominio community, de modo que el mapper las reconoce via `instanceof`. `register/route.ts` sigue sin usar errores de dominio.
 
 ## Consequences
 
