@@ -31,6 +31,11 @@ function isTopLevelClient(
  * made by calling the factory with the appropriate client — callers are
  * responsible for using the right one.
  *
+ * IMPORTANT: returns a plain object literal so that any caller that ever
+ * spreads the result (e.g. `{...auditLog}`) keeps the `record` method as an
+ * OWN property.  Wrapping it in a class would put `record` on the prototype
+ * and silently drop it on spread.
+ *
  * @example
  * // Top-level (direct writes, not in a transaction)
  * const adapter = createPrismaAuditLogAdapter(prisma);
@@ -46,39 +51,33 @@ function isTopLevelClient(
 export function createPrismaAuditLogAdapter(
   client: PrismaClient | Prisma.TransactionClient,
 ): AuditLogPort {
-  return new PrismaAuditLogAdapter(client);
-}
-
-class PrismaAuditLogAdapter implements AuditLogPort {
-  constructor(
-    private readonly client: PrismaClient | Prisma.TransactionClient,
-  ) {
-    if (isTopLevelClient(client)) {
-      console.warn(
-        "[PrismaAuditLogAdapter] Created with top-level PrismaClient. " +
-          "Audit writes will NOT be part of any enclosing transaction. " +
-          "Use the transaction client inside prisma.$transaction instead.",
-      );
-    }
+  if (isTopLevelClient(client)) {
+    console.warn(
+      "[PrismaAuditLogAdapter] Created with top-level PrismaClient. " +
+        "Audit writes will NOT be part of any enclosing transaction. " +
+        "Use the transaction client inside prisma.$transaction instead.",
+    );
   }
 
-  async record(input: AuditLogEntry): Promise<void> {
-    try {
-      await this.client.auditLog.create({
-        data: {
-          communityId: input.communityId,
-          actorId: input.actorId,
-          action: input.action as AuditAction,
-          entityType: input.entityType,
-          entityId: input.entityId,
-          metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
-        },
-      });
-    } catch (err) {
-      throw new AuditLogError(
-        `Failed to record audit log entry for "${input.action}" on ${input.entityType}:${input.entityId}`,
-        err,
-      );
-    }
-  }
+  return {
+    async record(input: AuditLogEntry): Promise<void> {
+      try {
+        await client.auditLog.create({
+          data: {
+            communityId: input.communityId,
+            actorId: input.actorId,
+            action: input.action as AuditAction,
+            entityType: input.entityType,
+            entityId: input.entityId,
+            metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
+          },
+        });
+      } catch (err) {
+        throw new AuditLogError(
+          `Failed to record audit log entry for "${input.action}" on ${input.entityType}:${input.entityId}`,
+          err,
+        );
+      }
+    },
+  };
 }

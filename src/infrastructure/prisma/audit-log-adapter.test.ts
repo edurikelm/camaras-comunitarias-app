@@ -9,28 +9,16 @@ function mockTxClient() {
     auditLog: {
       create: createMock,
     },
-    $transaction: undefined,
-  };
-}
-
-function mockPrismaClient() {
-  const createMock = vi.fn<() => Promise<unknown>>();
-  return {
-    auditLog: {
-      create: createMock,
-    },
-    $transaction: undefined,
+    _create: createMock,
   };
 }
 
 describe("PrismaAuditLogAdapter", () => {
   let txClient: ReturnType<typeof mockTxClient>;
-  let prismaClient: ReturnType<typeof mockPrismaClient>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     txClient = mockTxClient();
-    prismaClient = mockPrismaClient();
   });
 
   describe("record()", () => {
@@ -49,8 +37,8 @@ describe("PrismaAuditLogAdapter", () => {
 
       await adapter.record(entry);
 
-      expect(txClient.auditLog.create).toHaveBeenCalledOnce();
-      expect(txClient.auditLog.create).toHaveBeenCalledWith({
+      expect(txClient._create).toHaveBeenCalledOnce();
+      expect(txClient._create).toHaveBeenCalledWith({
         data: {
           communityId: "com-1",
           actorId: "user-1",
@@ -76,8 +64,8 @@ describe("PrismaAuditLogAdapter", () => {
 
       await adapter.record(entry);
 
-      expect(txClient.auditLog.create).toHaveBeenCalledOnce();
-      expect(txClient.auditLog.create).toHaveBeenCalledWith({
+      expect(txClient._create).toHaveBeenCalledOnce();
+      expect(txClient._create).toHaveBeenCalledWith({
         data: {
           communityId: "com-1",
           actorId: "user-1",
@@ -92,11 +80,10 @@ describe("PrismaAuditLogAdapter", () => {
     it("throws AuditLogError on Prisma failure", async () => {
       const failingClient = {
         auditLog: {
-          create: vi.fn<() => Promise<unknown>>().mockRejectedValue(
-            new Error("DB connection lost"),
-          ),
+          create: vi
+            .fn<() => Promise<unknown>>()
+            .mockRejectedValue(new Error("DB connection lost")),
         },
-        $transaction: undefined,
       };
 
       const adapter = createPrismaAuditLogAdapter(
@@ -114,14 +101,50 @@ describe("PrismaAuditLogAdapter", () => {
         "Failed to record audit log entry",
       );
     });
+  });
 
-    it("does not warn when given a transaction client", async () => {
+  describe("spread semantics (regression: consistencia con membership-lookups-adapter)", () => {
+    // Mismo principio que membership-lookups-adapter: una versión anterior
+    // envolvía `record` en una clase y ponía el método en el prototype.
+    // Si algún día alguien hace `{...auditLog}` en lugar de `auditLog.record(...)`,
+    // la versión de clase dejaría la llamada silenciosamente rota. Este test
+    // blinda el shape del factory.
+
+    it("exposes `record` as an OWN enumerable property", () => {
+      const adapter = createPrismaAuditLogAdapter(
+        txClient as unknown as PrismaClient,
+      );
+      expect(
+        Object.prototype.hasOwnProperty.call(adapter, "record"),
+        "adapter.record debe ser own property (no prototype)",
+      ).toBe(true);
+    });
+
+    it("survives a spread: `{...adapter}.record` is callable", async () => {
+      const adapter = createPrismaAuditLogAdapter(
+        txClient as unknown as PrismaClient,
+      );
+      const spreaded = { ...adapter };
+
+      expect(typeof spreaded.record).toBe("function");
+
+      await spreaded.record({
+        communityId: "com-1",
+        actorId: "user-1",
+        action: "CAMERA_REGISTERED",
+        entityType: "Camera",
+        entityId: "cam-1",
+      });
+      expect(txClient._create).toHaveBeenCalledOnce();
+    });
+
+    it("does not warn when constructed with a transaction client", () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       // Transaction clients do not have $transaction
-      const txClient = {
+      const txOnlyClient = {
         auditLog: { create: vi.fn<() => Promise<unknown>>() },
       };
-      createPrismaAuditLogAdapter(txClient as unknown as PrismaClient);
+      createPrismaAuditLogAdapter(txOnlyClient as unknown as PrismaClient);
       expect(warnSpy).not.toHaveBeenCalled();
       warnSpy.mockRestore();
     });
