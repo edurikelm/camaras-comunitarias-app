@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createPrismaMembershipLookupsAdapter } from "./membership-lookups-adapter";
+import type { MembershipLookupsPort } from "@/domain/community/membership/membership-lookups";
 import type { PrismaClient } from "@/generated/prisma/client";
 
 // Minimal mock of the Prisma namespaces used by the adapter
@@ -17,7 +18,6 @@ function mockTxClient() {
     communitySector: {
       findUnique: communitySectorFindUniqueMock,
     },
-    $transaction: undefined,
     // Capture refs for assertions
     _communityFindUnique: communityFindUniqueMock,
     _communityMemberFindFirst: communityMemberFindFirstMock,
@@ -188,16 +188,81 @@ describe("PrismaMembershipLookupsAdapter", () => {
     });
   });
 
-  it("does not warn when constructed with a transaction client", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    // Transaction clients do not have $transaction
-    const txClient = {
-      community: { findUnique: vi.fn<() => Promise<unknown>>() },
-      communityMember: { findFirst: vi.fn<() => Promise<unknown>>() },
-      communitySector: { findUnique: vi.fn<() => Promise<unknown>>() },
-    };
-    createPrismaMembershipLookupsAdapter(txClient as unknown as PrismaClient);
-    expect(warnSpy).not.toHaveBeenCalled();
-    warnSpy.mockRestore();
+  describe("spread semantics (regression: 5 repos rotos por `...membershipLookups`)", () => {
+    // Background: este adapter se usa dentro de 5 Prisma repositorios via
+    // `createUnitOfWork(tx)` que retorna `{ ...membershipLookups, ...métodos }`.
+    // Una versión anterior envolvía los métodos en una clase — los métodos
+    // viven en el PROTOTYPE y el spread SOLO copia own properties, así que el
+    // UoW quedaba sin los métodos del port y TODAS las políticas de dominio
+    // se rompían a runtime con `TypeError: client.findCommunityById is not a function`.
+    //
+    // Estos tests garantizan que el adapter sigue siendo spread-safe.
+
+    const expectedMethods: Array<keyof MembershipLookupsPort> = [
+      "findCommunityById",
+      "findActiveAdminMember",
+      "findActiveNeighborOrGuardMember",
+      "findActiveMember",
+      "findActiveAdminOrGuardMember",
+      "findSectorById",
+    ];
+
+    it("exposes the 6 port methods as OWN enumerable properties", () => {
+      const adapter = createPrismaMembershipLookupsAdapter(
+        txClient as unknown as PrismaClient,
+      );
+
+      for (const method of expectedMethods) {
+        expect(
+          Object.prototype.hasOwnProperty.call(adapter, method),
+          `adapter.${method} debe ser own property (no prototype)`,
+        ).toBe(true);
+      }
+    });
+
+    it("survives a spread: `{...adapter}` keeps every port method as a callable function", async () => {
+      const adapter = createPrismaMembershipLookupsAdapter(
+        txClient as unknown as PrismaClient,
+      );
+      const spreaded = { ...adapter };
+
+      // Si la regresión vuelve, `spreaded` no tendrá estos métodos y TS
+      // tampoco se queja porque los types vienen del shape del factory.
+      for (const method of expectedMethods) {
+        expect(
+          typeof spreaded[method],
+          `spreaded.${method} debe ser function (no undefined)`,
+        ).toBe("function");
+      }
+
+      // Verificación funcional: spreaded.findCommunityById debe delegar al tx.
+      txClient._communityFindUnique.mockResolvedValue({
+        id: "com-1",
+        name: "El Buen Vecino",
+        status: "ACTIVE",
+      });
+      const result = await spreaded.findCommunityById("com-1");
+      expect(result).toEqual({
+        id: "com-1",
+        name: "El Buen Vecino",
+        status: "ACTIVE",
+      });
+      expect(txClient._communityFindUnique).toHaveBeenCalledOnce();
+    });
+
+    it("does not warn when constructed with a transaction client", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      // Transaction clients do not have $transaction
+      const txOnlyClient = {
+        community: { findUnique: vi.fn<() => Promise<unknown>>() },
+        communityMember: { findFirst: vi.fn<() => Promise<unknown>>() },
+        communitySector: { findUnique: vi.fn<() => Promise<unknown>>() },
+      };
+      createPrismaMembershipLookupsAdapter(
+        txOnlyClient as unknown as PrismaClient,
+      );
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
   });
 });
