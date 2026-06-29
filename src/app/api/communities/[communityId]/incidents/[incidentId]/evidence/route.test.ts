@@ -156,9 +156,13 @@ function createPostFormData(
   metadata?: string,
 ): FormData {
   const formData = new FormData();
+  // `content as BlobPart`: TS 5.7 distinguishes Uint8Array<ArrayBuffer> from
+  // Uint8Array<ArrayBufferLike> (SharedArrayBuffer). En este codebase nunca
+  // usamos SharedArrayBuffer, por lo que el Uint8Array local es seguro de
+  // tratar como BlobPart en runtime.
   formData.append(
     "file",
-    new File(typeof content === "string" ? [content] : [content], fileName, {
+    new File([content as BlobPart], fileName, {
       type: mimeType,
     }),
   );
