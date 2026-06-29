@@ -1,9 +1,7 @@
 import type { ReactNode } from "react";
 
-import { Button } from "@/components/ui/button";
 import {
   Empty,
-  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -14,6 +12,11 @@ type DomainEmptyStateProps = {
   icon: ReactNode;
   title: string;
   description: string;
+  /**
+   * Optional non-interactive label for what action will eventually be
+   * available here.  Rendered as muted text under the description; never as
+   * a disabled button (those create the illusion of broken functionality).
+   */
   action?: string;
 };
 
@@ -31,11 +34,9 @@ export function DomainEmptyState({
         <EmptyDescription>{description}</EmptyDescription>
       </EmptyHeader>
       {action ? (
-        <EmptyContent>
-          <Button variant="outline" disabled>
-            Proximamente: {action}
-          </Button>
-        </EmptyContent>
+        <p className="px-6 pb-6 text-xs text-muted-foreground">
+          Proximamente: {action}
+        </p>
       ) : null}
     </Empty>
   );

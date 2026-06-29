@@ -1,10 +1,9 @@
-import { CameraIcon, EyeIcon, LockKeyholeIcon, PlusIcon, ShieldCheckIcon } from "lucide-react";
+import { CameraIcon, EyeIcon, LockKeyholeIcon, ShieldCheckIcon } from "lucide-react";
 
 import { DomainEmptyState } from "@/components/domain/empty-state";
 import { NoPermissionState } from "@/components/domain/no-permission-state";
 import { RouteShell } from "@/components/domain/route-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -21,12 +20,6 @@ export default function CamerasPage() {
       title="Camaras y permisos"
       description="Registro, revision administrativa y acceso live view siempre mediado por permisos explicitos del dueno."
       activeHref="/cameras"
-      action={
-        <Button disabled>
-          <PlusIcon data-icon="inline-start" />
-          Proximamente: registrar camara
-        </Button>
-      }
     >
       <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <Card>
