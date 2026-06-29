@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AlertCircleIcon, CheckCircleIcon, Loader2Icon } from "lucide-react";
+import { z } from "zod";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,22 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSupabase } from "@/components/providers/supabase-provider";
+
+// ---------------------------------------------------------------------------
+// Schema
+// ---------------------------------------------------------------------------
+
+const registerSchema = z.object({
+  name: z
+    .string()
+    .min(2, "El nombre debe tener al menos 2 caracteres")
+    .max(100, "El nombre no puede exceder 100 caracteres"),
+  email: z.string().email("Dirección de correo inválida"),
+  password: z
+    .string()
+    .min(6, "La contraseña debe tener al menos 6 caracteres")
+    .max(100, "La contraseña no puede exceder 100 caracteres"),
+});
 
 export default function RegisterPage() {
   const supabase = useSupabase();
@@ -35,6 +52,14 @@ export default function RegisterPage() {
       setError(null);
       setSuccess(false);
       setLoading(true);
+
+      // 0. Validate inputs before any side-effect
+      const parsed = registerSchema.safeParse({ name, email, password });
+      if (!parsed.success) {
+        setError(parsed.error.errors[0].message);
+        setLoading(false);
+        return;
+      }
 
       // 1. Create user in Supabase Auth
       const { data: signUpData, error: signUpError } =
