@@ -39,7 +39,7 @@ export default async function DashboardPage() {
   // Buscar usuario en base de datos local
   const dbUser = await prisma.user.findUnique({
     where: { authProviderId: user.id },
-    select: { id: true },
+    select: { id: true, platformRole: true },
   });
 
   if (!dbUser) {
@@ -60,6 +60,7 @@ export default async function DashboardPage() {
         title="Membresia pendiente"
         description="Tu solicitud de membresia esta pendiente de aprobacion por un administrador."
         activeHref="/dashboard"
+        viewerRole={dbUser.platformRole}
       >
         <DomainEmptyState
           icon={<UsersIcon />}
@@ -117,6 +118,7 @@ export default async function DashboardPage() {
       title={community.name}
       description="Resumen operativo para miembros activos: sectores, alertas internas e incidentes visibles segun rol y permisos."
       activeHref="/dashboard"
+      viewerRole={membership.role}
       action={
         isAdmin ? (
           <CreateInvitationDialog communityId={community.id} />

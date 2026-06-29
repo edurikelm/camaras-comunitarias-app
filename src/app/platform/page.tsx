@@ -41,6 +41,7 @@ export default async function PlatformPage() {
         title="Panel de plataforma"
         description="Gestiona comunidades y primeros administradores."
         activeHref="/platform"
+        viewerRole="PLATFORM_ADMIN"
       >
         <NoPermissionState description="No tienes permisos de administrador de plataforma." />
       </RouteShell>
@@ -94,6 +95,7 @@ export default async function PlatformPage() {
       title="Panel de plataforma"
       description="Gestiona comunidades y primeros administradores sin acceder por defecto a datos privados del tenant."
       activeHref="/platform"
+      viewerRole="PLATFORM_ADMIN"
       action={<CreateCommunityDialog />}
     >
       <div className="grid gap-4 md:grid-cols-3">

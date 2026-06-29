@@ -1,13 +1,13 @@
 /**
  * Helper compartido de membresía para páginas autenticadas.
  *
- *区分 6 estados explícitos para manejar correctamente los mensajes de
- *permiso según el estado del miembro: sin sesión, sin usuario en BD,
- *sin membresía, o con membresía en estado PENDING / BLOCKED / ACTIVE.
+ * Distingue 6 estados explícitos para manejar correctamente los mensajes
+ * de permiso según el estado del miembro: sin sesión, sin usuario en BD,
+ * sin membresía, o con membresía en estado PENDING / BLOCKED / ACTIVE.
  *
- *También expone `ViewerRole` para que el nav pueda filtrar secciones
- *según el rol del usuario autenticado (evita mostrar "Plataforma"
- *a usuarios que no son PLATFORM_ADMIN).
+ * También expone `ViewerRole` para que el nav pueda filtrar secciones
+ * según el rol del usuario autenticado (evita mostrar "Plataforma"
+ * a usuarios que no son PLATFORM_ADMIN).
  */
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -114,7 +114,7 @@ export async function getPageMembership(): Promise<PageMembership> {
   // Mapear CommunityMemberRole (Prisma) → ViewerRole
   const viewerRole = mapToViewerRole(dbUser.platformRole ?? null, membership.role);
 
-  //社区成员状态: PENDING | BLOCKED | ACTIVE
+  // Estado del miembro: PENDING | BLOCKED | ACTIVE
   if (membership.status === "PENDING") {
     return {
       kind: "PENDING",
