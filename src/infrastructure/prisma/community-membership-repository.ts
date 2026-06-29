@@ -4,7 +4,7 @@ import type {
   CommunityUnitOfWork,
 } from "@/domain/community/community-repository";
 import { createTransactionalRepository } from "@/infrastructure/prisma/_internal/create-transactional-repository";
-import type { AuditLogPort } from "@/domain/shared/audit-log";
+import { createPrismaAuditLogAdapter } from "@/infrastructure/prisma/audit-log-adapter";
 import { createPrismaMembershipLookupsAdapter } from "@/infrastructure/prisma/membership-lookups-adapter";
 
 /**
@@ -14,12 +14,15 @@ import { createPrismaMembershipLookupsAdapter } from "@/infrastructure/prisma/me
  */
 export function createPrismaCommunityMembershipRepository(
   prisma: PrismaClient,
-  deps: { auditLog: AuditLogPort },
+  _deps?: object,
 ): CommunityMembershipRepository {
-  const { auditLog } = deps;
-
   function createUnitOfWork(tx: Prisma.TransactionClient): CommunityUnitOfWork {
     const membershipLookups = createPrismaMembershipLookupsAdapter(tx);
+    // Use transaction-scoped audit log so writes are part of the same transaction.
+    // The previous approach captured a top-level auditLog via closure, writing
+    // outside the transaction — if that write failed, the invitation was already
+    // committed but the error propagated as an unhandled 500.
+    const auditLog = createPrismaAuditLogAdapter(tx);
 
     return {
       ...membershipLookups,

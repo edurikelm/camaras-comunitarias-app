@@ -173,4 +173,40 @@ describe("createCommunityInvitation", () => {
     expect(repository.createCommunityInvitation).not.toHaveBeenCalled();
     expect(repository.createAuditLog).not.toHaveBeenCalled();
   });
+
+  it("rechaza si el audit log falla con un error que no es DomainError (verifica que el error se propaga)", async () => {
+    // Simula un error de infraestructura (e.g., constraint violation) que NO es DomainError.
+    // El audit log es llamado DESPUES de la creación de la invitación dentro de la
+    // transacción, así que si falla, toda la transacción hace rollback.
+    const nonDomainError = new Error("Audit log write failed: DB connection lost");
+    const repository = createRepository({
+      createAuditLog: vi.fn(async () => {
+        throw nonDomainError;
+      }),
+    });
+
+    await expect(
+      createCommunityInvitation(validInput, { repository }),
+    ).rejects.toThrow("Audit log write failed: DB connection lost");
+
+    // La invitación NO se creó porque el error del audit log abortó la transacción
+    expect(repository.createCommunityInvitation).toHaveBeenCalled();
+  });
+
+  it("lanza AuditLogError (DomainError) cuando el adapter de audit log falla", async () => {
+    // El AuditLogError extiende DomainError, así que es manejado por domain-error-mapper
+    const { AuditLogError } = await import("@/domain/shared/audit-log");
+    const auditError = new AuditLogError("Audit log unavailable");
+    const repository = createRepository({
+      createAuditLog: vi.fn(async () => {
+        throw auditError;
+      }),
+    });
+
+    await expect(
+      createCommunityInvitation(validInput, { repository }),
+    ).rejects.toThrow(auditError);
+
+    expect(repository.createAuditLog).toHaveBeenCalled();
+  });
 });
