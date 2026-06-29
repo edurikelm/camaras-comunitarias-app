@@ -10,7 +10,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "prisma:validate": "prisma validate --schema=prisma/schema.prisma",
-    "prisma:generate": "prisma generate --schema=prisma/schema.prisma"
+    "prisma:generate": "prisma generate --schema=prisma/schema.prisma",
+    "dev:realtime": "cd services/realtime && npm run dev",
+    "dev:all": "concurrently -n web,realtime \"npm:dev\" \"npm:dev:realtime\""
   },
   "dependencies": {
     "@hookform/resolvers": "3.10.0",
@@ -37,6 +39,7 @@
     "@types/pg": "8.20.0",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
+    "concurrently": "^9.0.0",
     "dotenv": "17.4.2",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.9",
