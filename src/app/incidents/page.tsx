@@ -131,7 +131,7 @@ export default async function IncidentsPage() {
       title="Incidentes, alertas y evidencia"
       description="Reporte rapido con severidad sugerida, evidencia restringida y solicitudes de grabacion manuales."
       activeHref="/incidents"
-      viewerRole={session.role}
+      viewerRole={session.platformRole ?? session.role}
       action={
         <CreateIncidentDialog
           communityId={communityId}

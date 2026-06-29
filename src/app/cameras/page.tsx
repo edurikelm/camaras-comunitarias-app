@@ -97,7 +97,7 @@ export default async function CamerasPage() {
       title="Camaras y permisos"
       description="Registro, revision administrativa y acceso live view siempre mediado por permisos explicitos del dueno."
       activeHref="/cameras"
-      viewerRole={session.role}
+      viewerRole={session.platformRole ?? session.role}
     >
       <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <Card>
