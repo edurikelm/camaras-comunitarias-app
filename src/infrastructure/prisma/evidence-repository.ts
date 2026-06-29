@@ -1,8 +1,6 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { EvidenceRepository } from "@/domain/community/evidence/evidence-repository";
 import type {
-  CommunityRecord,
-  CommunityMemberRecord,
   IncidentRecord,
   EvidenceRecord,
   CreateEvidenceInput,
@@ -10,6 +8,7 @@ import type {
 } from "@/domain/community/evidence/evidence-repository";
 import { createTransactionalRepository } from "@/infrastructure/prisma/_internal/create-transactional-repository";
 import type { AuditLogPort } from "@/domain/shared/audit-log";
+import { createPrismaMembershipLookupsAdapter } from "@/infrastructure/prisma/membership-lookups-adapter";
 
 /**
  * Prisma-backed EvidenceRepository.
@@ -26,55 +25,10 @@ export function createPrismaEvidenceRepository(
   function createUnitOfWork(
     tx: Prisma.TransactionClient,
   ): EvidenceRepository {
+    const membershipLookups = createPrismaMembershipLookupsAdapter(tx);
+
     return {
-      // -------------------------------------------------------------------
-      // Community queries
-      // -------------------------------------------------------------------
-
-      async findCommunityById(id) {
-        const row = await tx.community.findUnique({
-          where: { id },
-          select: { id: true, name: true, status: true },
-        });
-        return row as CommunityRecord | null;
-      },
-
-      async findActiveMember(communityId, userId) {
-        const row = await tx.communityMember.findFirst({
-          where: {
-            userId,
-            communityId,
-            status: "ACTIVE",
-          },
-          select: {
-            id: true,
-            userId: true,
-            communityId: true,
-            role: true,
-            status: true,
-          },
-        });
-        return row as CommunityMemberRecord | null;
-      },
-
-      async findActiveAdminOrGuardMember(communityId, userId) {
-        const row = await tx.communityMember.findFirst({
-          where: {
-            userId,
-            communityId,
-            status: "ACTIVE",
-            role: { in: ["ADMIN", "GUARD"] },
-          },
-          select: {
-            id: true,
-            userId: true,
-            communityId: true,
-            role: true,
-            status: true,
-          },
-        });
-        return row as CommunityMemberRecord | null;
-      },
+      ...membershipLookups,
 
       // -------------------------------------------------------------------
       // Incident queries

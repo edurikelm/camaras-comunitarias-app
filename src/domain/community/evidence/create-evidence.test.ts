@@ -37,6 +37,9 @@ function createRepository(
       status: CommunityMemberStatus.ACTIVE,
     })),
     findActiveAdminOrGuardMember: vi.fn(),
+    findActiveAdminMember: vi.fn(),
+    findActiveNeighborOrGuardMember: vi.fn(),
+    findSectorById: vi.fn(),
 
     // Incident queries
     findIncidentById: vi.fn(async (communityId, incidentId) => ({

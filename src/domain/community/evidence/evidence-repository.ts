@@ -1,28 +1,9 @@
-import {
-  AuditAction,
-  CommunityMemberRole,
-  CommunityMemberStatus,
-  CommunityStatus,
-  IncidentStatus,
-} from "@/generated/prisma/enums";
+import { AuditAction, IncidentStatus } from "@/generated/prisma/enums";
+import type { MembershipLookupsPort } from "@/domain/community/membership/membership-lookups";
 
 // ---------------------------------------------------------------------------
 // Record types
 // ---------------------------------------------------------------------------
-
-export type CommunityRecord = {
-  id: string;
-  name: string;
-  status: CommunityStatus;
-};
-
-export type CommunityMemberRecord = {
-  id: string;
-  userId: string;
-  communityId: string;
-  role: CommunityMemberRole;
-  status: CommunityMemberStatus;
-};
 
 export type IncidentRecord = {
   id: string;
@@ -73,18 +54,7 @@ export type CreateAuditLogInput = {
 // Repository interface
 // ---------------------------------------------------------------------------
 
-export interface EvidenceRepository {
-  // Community queries
-  findCommunityById(id: string): Promise<CommunityRecord | null>;
-  findActiveMember(
-    communityId: string,
-    userId: string,
-  ): Promise<CommunityMemberRecord | null>;
-  findActiveAdminOrGuardMember(
-    communityId: string,
-    userId: string,
-  ): Promise<CommunityMemberRecord | null>;
-
+export interface EvidenceRepository extends MembershipLookupsPort {
   // Incident queries
   findIncidentById(
     communityId: string,
