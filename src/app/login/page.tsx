@@ -45,7 +45,10 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/platform");
+      // Dispatch via the auth-aware root page so PLATFORM_ADMIN, ACTIVE members
+      // and pending users each land in the right place (was hardcoded to
+      // /platform, breaking login for any non-platform-admin).
+      router.push("/");
       router.refresh();
     },
     [supabase, email, password, router],
