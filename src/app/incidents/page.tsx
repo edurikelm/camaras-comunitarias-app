@@ -1,5 +1,3 @@
-import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getPrisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import {
   AlertTriangleIcon,
@@ -21,6 +19,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { getPageMembership } from "@/lib/auth/page-membership";
+import { getPrisma } from "@/lib/prisma";
 
 const incidentStatusLabels: Record<string, string> = {
   OPEN: "Abierto",
@@ -44,85 +44,70 @@ const typeLabels: Record<string, string> = {
   OTHER: "Otro",
 };
 
-async function getMembership() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { kind: "no-session" as const };
-  }
-
-  const prisma = getPrisma();
-
-  const dbUser = await prisma.user.findUnique({
-    where: { authProviderId: user.id },
-    select: { id: true },
-  });
-
-  if (!dbUser) {
-    return { kind: "no-db-user" as const };
-  }
-
-  const membership = await prisma.communityMember.findUnique({
-    where: { userId: dbUser.id },
-    select: {
-      communityId: true,
-      role: true,
-      status: true,
-    },
-  });
-
-  if (!membership) {
-    return { kind: "no-membership" as const };
-  }
-
-  return { kind: "ok" as const, membership, userId: dbUser.id };
-}
-
 export default async function IncidentsPage() {
-  const session = await getMembership();
+  const session = await getPageMembership();
 
-  if (session.kind === "no-session") {
-    redirect("/login");
-  }
+  switch (session.kind) {
+    case "no-session":
+      redirect("/login");
 
-  if (session.kind === "no-db-user" || session.kind === "no-membership") {
-    return (
-      <RouteShell
-        badge="Sin membresia"
-        title="Incidentes, alertas y evidencia"
-        description="Reporte rapido con severidad sugerida, evidencia restringida y solicitudes de grabacion manuales."
-        activeHref="/incidents"
-      >
-        <NoPermissionState
-          title="Membresia requerida"
-          description="Necesitas ser miembro activo de una comunidad para acceder a los incidentes."
-        />
-      </RouteShell>
-    );
-  }
+    case "no-db-user":
+    case "no-membership":
+      return (
+        <RouteShell
+          badge="Sin membresia"
+          title="Incidentes, alertas y evidencia"
+          description="Reporte rapido con severidad sugerida, evidencia restringida y solicitudes de grabacion manuales."
+          activeHref="/incidents"
+          viewerRole={session.kind === "no-membership" ? session.platformRole : null}
+        >
+          <NoPermissionState
+            title="Membresia requerida"
+            description="Necesitas ser miembro activo de una comunidad para acceder a los incidentes."
+          />
+        </RouteShell>
+      );
 
-  if (session.membership.status !== "ACTIVE") {
-    return (
-      <RouteShell
-        badge="Membresia pendiente"
-        title="Incidentes, alertas y evidencia"
-        description="Reporte rapido con severidad sugerida, evidencia restringida y solicitudes de grabacion manuales."
-        activeHref="/incidents"
-      >
-        <NoPermissionState
-          title="Membresia no activa"
-          description="Tu membresia debe estar ACTIVE para ver o crear incidentes."
-        />
-      </RouteShell>
-    );
+    case "PENDING":
+      return (
+        <RouteShell
+          badge="Membresia pendiente"
+          title="Incidentes, alertas y evidencia"
+          description="Reporte rapido con severidad sugerida, evidencia restringida y solicitudes de grabacion manuales."
+          activeHref="/incidents"
+          viewerRole={session.platformRole}
+        >
+          <NoPermissionState
+            title="Membresia pendiente de aprobacion"
+            description="Un administrador debe aprobar tu solicitud antes de que puedas crear o ver incidentes."
+          />
+        </RouteShell>
+      );
+
+    case "BLOCKED":
+      return (
+        <RouteShell
+          badge="Membresia bloqueada"
+          title="Incidentes, alertas y evidencia"
+          description="Reporte rapido con severidad sugerida, evidencia restringida y solicitudes de grabacion manuales."
+          activeHref="/incidents"
+          viewerRole={session.platformRole}
+        >
+          <NoPermissionState
+            title="Membresia bloqueada"
+            description="Tu acceso a incidentes fue revocado. Contacta a un administrador si creés que es un error."
+          />
+        </RouteShell>
+      );
+
+    case "ACTIVE":
+      // Continuar al render normal con los datos de la comunidad
+      break;
   }
 
   // ACTIVE — fetch data
   const prisma = getPrisma();
-  const communityId = session.membership.communityId;
+  const communityId = session.communityId;
 
   const [incidents, sectors] = await Promise.all([
     prisma.incident.findMany({
@@ -146,6 +131,7 @@ export default async function IncidentsPage() {
       title="Incidentes, alertas y evidencia"
       description="Reporte rapido con severidad sugerida, evidencia restringida y solicitudes de grabacion manuales."
       activeHref="/incidents"
+      viewerRole={session.role}
       action={
         <CreateIncidentDialog
           communityId={communityId}

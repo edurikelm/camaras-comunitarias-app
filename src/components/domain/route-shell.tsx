@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { LogoutButton } from "@/components/domain/logout-button";
 import { cn } from "@/lib/utils";
+import type { ViewerRole } from "@/lib/auth/page-membership";
 
 const navigationItems = [
   { href: "/", label: "Inicio" },
@@ -22,6 +23,12 @@ type RouteShellProps = {
   activeHref: string;
   children: ReactNode;
   action?: ReactNode;
+  /**
+   * Rol del usuario autenticado para filtrar elementos de navegación.
+   * Si es undefined, se muestran todas las secciones (compatibilidad con
+   * páginas que aún no pasaron el viewerRole).
+   */
+  viewerRole?: ViewerRole | "PLATFORM_ADMIN" | null;
 };
 
 export function RouteShell({

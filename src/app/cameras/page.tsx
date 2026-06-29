@@ -12,14 +12,92 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getPageMembership } from "@/lib/auth/page-membership";
 
-export default function CamerasPage() {
+export default async function CamerasPage() {
+  const session = await getPageMembership();
+
+  switch (session.kind) {
+    case "no-session":
+      // El redirect de Supabase lo maneja automáticamente en las páginas públicas
+      // Esta página es solo para miembros, redirigimos a login
+      return (
+        <RouteShell
+          badge="Camara comunitaria"
+          title="Camaras y permisos"
+          description="Registro, revision administrativa y acceso live view siempre mediado por permisos explicitos del dueno."
+          activeHref="/cameras"
+          viewerRole={null}
+        >
+          <NoPermissionState
+            title="Inicia sesion"
+            description="Necesitas iniciar sesion para ver las camaras de tu comunidad."
+          />
+        </RouteShell>
+      );
+
+    case "no-db-user":
+    case "no-membership":
+      return (
+        <RouteShell
+          badge="Sin membresia"
+          title="Camaras y permisos"
+          description="Registro, revision administrativa y acceso live view siempre mediado por permisos explicitos del dueno."
+          activeHref="/cameras"
+          viewerRole={session.kind === "no-membership" ? session.platformRole : null}
+        >
+          <NoPermissionState
+            title="Membresia requerida"
+            description="Necesitas ser miembro activo de una comunidad para acceder a las camaras."
+          />
+        </RouteShell>
+      );
+
+    case "PENDING":
+      return (
+        <RouteShell
+          badge="Membresia pendiente"
+          title="Camaras y permisos"
+          description="Registro, revision administrativa y acceso live view siempre mediado por permisos explicitos del dueno."
+          activeHref="/cameras"
+          viewerRole={session.platformRole}
+        >
+          <NoPermissionState
+            title="Membresia pendiente de aprobacion"
+            description="Un administrador debe aprobar tu solicitud antes de que puedas ver o registrar camaras."
+          />
+        </RouteShell>
+      );
+
+    case "BLOCKED":
+      return (
+        <RouteShell
+          badge="Membresia bloqueada"
+          title="Camaras y permisos"
+          description="Registro, revision administrativa y acceso live view siempre mediado por permisos explicitos del dueno."
+          activeHref="/cameras"
+          viewerRole={session.platformRole}
+        >
+          <NoPermissionState
+            title="Membresia bloqueada"
+            description="Tu acceso a camaras fue revocado. Contacta a un administrador si creés que es un error."
+          />
+        </RouteShell>
+      );
+
+    case "ACTIVE":
+    // Continuar al render normal
+  }
+
+  // ACTIVE — render placeholder de live view
+  // (las camaras reales se implementan en slices posteriores del MVP)
   return (
     <RouteShell
       badge="Camara comunitaria"
       title="Camaras y permisos"
       description="Registro, revision administrativa y acceso live view siempre mediado por permisos explicitos del dueno."
       activeHref="/cameras"
+      viewerRole={session.role}
     >
       <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <Card>
