@@ -3,6 +3,7 @@ import {
   AuditAction,
   CameraStatus,
   CommunityMemberRole,
+  CommunityMemberStatus,
   CommunityStatus,
 } from "@/generated/prisma/enums";
 import { removeCameraPermission } from "./remove-camera-permission";
@@ -58,9 +59,11 @@ function createRepository(
       return null;
     }),
     findActiveNeighborOrGuardMember: vi.fn(
-      async (_communityId, _userId) => ({ id: "member-1", userId: _userId, communityId: _communityId, role: "NEIGHBOR", status: "ACTIVE" }),
+      async (_communityId, _userId) => ({ id: "member-1", userId: _userId, communityId: _communityId, role: CommunityMemberRole.NEIGHBOR, status: CommunityMemberStatus.ACTIVE }),
     ),
     findActiveAdminMember: vi.fn(),
+    findActiveMember: vi.fn(),
+    findActiveAdminOrGuardMember: vi.fn(),
     findSectorById: vi.fn(),
     createAuditLog: vi.fn(),
     runInTransaction: vi.fn(async (op) => op(repository)),

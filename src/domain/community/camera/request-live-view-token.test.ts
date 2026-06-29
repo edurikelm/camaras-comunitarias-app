@@ -89,6 +89,8 @@ function createRepository(
       }
       return null;
     }),
+    findActiveMember: vi.fn(),
+    findActiveAdminOrGuardMember: vi.fn(),
     findSectorById: vi.fn(),
     createAuditLog: vi.fn(),
     runInTransaction: vi.fn(async (op) => op(repository)),

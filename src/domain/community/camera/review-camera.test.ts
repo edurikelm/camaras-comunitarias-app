@@ -94,6 +94,8 @@ function createRepository(
       role: CommunityMemberRole.ADMIN,
       status: CommunityMemberStatus.ACTIVE,
     })),
+    findActiveMember: vi.fn(),
+    findActiveAdminOrGuardMember: vi.fn(),
     findSectorById: vi.fn(),
     createAuditLog: vi.fn(),
     runInTransaction: vi.fn(async (op) => op(repository)),

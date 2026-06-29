@@ -2,8 +2,8 @@ import {
   AuditAction,
   CameraStatus,
   CommunityMemberRole,
-  CommunityStatus,
 } from "@/generated/prisma/enums";
+import type { MembershipLookupsPort } from "@/domain/community/membership/membership-lookups";
 
 // ---------------------------------------------------------------------------
 // Record types
@@ -51,29 +51,6 @@ export type UpdateCameraInput = {
   sectorId?: string | null;
 };
 
-// ---------------------------------------------------------------------------
-// Community lookup types used by camera services
-// ---------------------------------------------------------------------------
-
-export type CommunityLookupRecord = {
-  id: string;
-  name: string;
-  status: CommunityStatus;
-};
-
-export type MemberLookupRecord = {
-  id: string;
-  userId: string;
-  communityId: string;
-  role: string;
-  status: string;
-};
-
-export type SectorLookupRecord = {
-  id: string;
-  communityId: string;
-};
-
 export type CameraPermissionRecord = {
   id: string;
   cameraId: string;
@@ -107,7 +84,7 @@ export type AuditLogInput = {
 // Repository interface
 // ---------------------------------------------------------------------------
 
-export interface CameraRepository {
+export interface CameraRepository extends MembershipLookupsPort {
   // Camera queries
   findCameraById(id: string): Promise<CameraRecord | null>;
   findCamerasByOwner(ownerId: string): Promise<CameraRecord[]>;
@@ -136,18 +113,6 @@ export interface CameraRepository {
     input: UpsertCameraPermissionInput,
   ): Promise<CameraPermissionRecord>;
   deleteCameraPermission(id: string): Promise<boolean>;
-
-  // Community queries needed for camera service validations
-  findCommunityById(id: string): Promise<CommunityLookupRecord | null>;
-  findActiveNeighborOrGuardMember(
-    communityId: string,
-    userId: string,
-  ): Promise<MemberLookupRecord | null>;
-  findActiveAdminMember(
-    communityId: string,
-    userId: string,
-  ): Promise<MemberLookupRecord | null>;
-  findSectorById(sectorId: string): Promise<SectorLookupRecord | null>;
   createAuditLog(input: AuditLogInput): Promise<void>;
 
   // Transaction support

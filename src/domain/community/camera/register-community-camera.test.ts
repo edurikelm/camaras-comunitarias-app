@@ -59,9 +59,12 @@ function createRepository(
       return null;
     }),
     findActiveAdminMember: vi.fn(),
+    findActiveMember: vi.fn(),
+    findActiveAdminOrGuardMember: vi.fn(),
     findSectorById: vi.fn(async () => ({
       id: "sector-1",
       communityId: "community-1",
+      name: "Test Sector",
     })),
     createAuditLog: vi.fn(),
     runInTransaction: vi.fn(async (op) => op(repository)),
@@ -196,8 +199,8 @@ describe("registerCommunityCamera", () => {
         id: "member-admin-1",
         userId: "user-admin-1",
         communityId: "community-1",
-        role: "ADMIN",
-        status: "ACTIVE",
+        role: CommunityMemberRole.ADMIN,
+        status: CommunityMemberStatus.ACTIVE,
       })),
     });
 
@@ -317,6 +320,7 @@ describe("registerCommunityCamera", () => {
       findSectorById: vi.fn(async () => ({
         id: "sector-other",
         communityId: "other-community",
+        name: "Other Sector",
       })),
     });
 

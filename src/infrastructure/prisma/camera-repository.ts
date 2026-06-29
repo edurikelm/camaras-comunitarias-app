@@ -5,9 +5,6 @@ import type {
   CameraRecord,
   CreateCameraInput,
   UpdateCameraInput,
-  CommunityLookupRecord,
-  MemberLookupRecord,
-  SectorLookupRecord,
   AuditLogInput,
   UpsertCameraPermissionInput,
 } from "@/domain/community/camera/camera-repository";
@@ -15,6 +12,7 @@ import type { RtspCipherPort } from "@/domain/community/camera/rtsp-cipher";
 import { CameraStatus } from "@/generated/prisma/enums";
 import { createTransactionalRepository } from "@/infrastructure/prisma/_internal/create-transactional-repository";
 import type { AuditLogPort } from "@/domain/shared/audit-log";
+import { createPrismaMembershipLookupsAdapter } from "@/infrastructure/prisma/membership-lookups-adapter";
 
 // ---------------------------------------------------------------------------
 // CameraRecord mapping
@@ -85,7 +83,11 @@ export function createPrismaCameraRepository(
   function createUnitOfWork(
     tx: Prisma.TransactionClient,
   ): CameraRepository {
+    const membershipLookups = createPrismaMembershipLookupsAdapter(tx);
+
     return {
+      ...membershipLookups,
+
       // -----------------------------------------------------------------------
       // Camera queries
       // -----------------------------------------------------------------------
@@ -218,64 +220,6 @@ export function createPrismaCameraRepository(
           },
         });
         return toCameraRecord(row);
-      },
-
-      // -----------------------------------------------------------------------
-      // Community queries
-      // -----------------------------------------------------------------------
-
-      async findCommunityById(id) {
-        const row = await tx.community.findUnique({
-          where: { id },
-          select: { id: true, name: true, status: true },
-        });
-        return row as CommunityLookupRecord | null;
-      },
-
-      async findActiveNeighborOrGuardMember(communityId, userId) {
-        const row = await tx.communityMember.findFirst({
-          where: {
-            userId,
-            communityId,
-            status: "ACTIVE",
-            role: { in: ["NEIGHBOR", "GUARD"] },
-          },
-          select: {
-            id: true,
-            userId: true,
-            communityId: true,
-            role: true,
-            status: true,
-          },
-        });
-        return row as MemberLookupRecord | null;
-      },
-
-      async findActiveAdminMember(communityId, userId) {
-        const row = await tx.communityMember.findFirst({
-          where: {
-            userId,
-            communityId,
-            role: "ADMIN",
-            status: "ACTIVE",
-          },
-          select: {
-            id: true,
-            userId: true,
-            communityId: true,
-            role: true,
-            status: true,
-          },
-        });
-        return row as MemberLookupRecord | null;
-      },
-
-      async findSectorById(sectorId) {
-        const row = await tx.communitySector.findUnique({
-          where: { id: sectorId },
-          select: { id: true, communityId: true },
-        });
-        return row as SectorLookupRecord | null;
       },
 
       async createAuditLog(input: AuditLogInput) {
