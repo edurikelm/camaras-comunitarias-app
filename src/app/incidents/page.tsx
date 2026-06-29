@@ -154,7 +154,6 @@ export default async function IncidentsPage() {
             icon={<BellRingIcon />}
             title="No hay incidentes reportados"
             description="Cuando un vecino reporte un evento, se sugerira severidad y se notificara segun sector comunitario y rol."
-            action="Reportar incidente"
           />
 
           <Card>
