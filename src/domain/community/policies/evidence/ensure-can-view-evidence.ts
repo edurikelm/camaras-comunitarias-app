@@ -4,8 +4,12 @@
  * Rule (CONTEXT.md §Evidence Rules):
  *   Only the incident creator, an ADMIN, or a GUARD can view evidence.
  *
- * The incident record is pre-loaded by the service and passed as argument
- * to avoid a redundant lookup (Pattern B from ADR-0016 §3).
+ * Pattern B (ADR-0016 §3): the incident record is pre-loaded by the service
+ * (which validates its existence with CommunityNotFoundError before calling
+ * this policy). This policy assumes incident is valid and checks:
+ *   1. community ACTIVE → CommunityNotFoundError/Invariant
+ *   2. actor is creator → OR actor is ACTIVE ADMIN/GUARD
+ * If incident is missing, the service has already returned 404.
  *
  * Errors:
  *   - CommunityNotFoundError("Community not found")

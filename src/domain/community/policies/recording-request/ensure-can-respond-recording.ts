@@ -5,9 +5,14 @@
  *   Only the camera owner can respond to a recording request.
  *
  * The service already has the RecordingRequestRecord loaded (Pattern B).
- * This policy only checks camera ownership.
+ * This policy checks: camera existence (→ 404), incident existence (→ 404),
+ * and camera ownership (→ 403).
  *
  * Errors:
+ *   - CommunityNotFoundError("Camera not found")
+ *     (thrown when findCameraById returns null — verbatim from respond-recording-request.ts:70)
+ *   - CommunityNotFoundError("Incident not found for recording request")
+ *     (thrown when findIncidentById returns null — verbatim from respond-recording-request.ts:88)
  *   - CommunityAuthorizationError("Only the camera owner can respond to a recording request")
  *     (thrown when actor is not the camera owner)
  *
@@ -22,6 +27,7 @@ import type { IncidentLookupRecord } from "@/domain/community/recording/recordin
 import type { MembershipLookupsPort } from "@/domain/community/membership/membership-lookups";
 import {
   CommunityAuthorizationError,
+  CommunityNotFoundError,
 } from "@/domain/community/errors";
 
 export type EnsureCanRespondRecordingOptions = {
@@ -49,11 +55,8 @@ export async function ensureCanRespondRecording({
 }: EnsureCanRespondRecordingOptions): Promise<EnsureCanRespondRecordingResult> {
   const camera = await client.findCameraById(request.cameraId);
   if (!camera) {
-    // Camera non-existence is a 404 (handled by the service as CameraNotFoundError).
-    // The policy only handles the authorization case (actor is not owner → 403).
-    throw new CommunityAuthorizationError(
-      "Only the camera owner can respond to a recording request",
-    );
+    // Camera non-existence → 404 (verbatim from respond-recording-request.ts:70)
+    throw new CommunityNotFoundError("Camera not found");
   }
 
   if (camera.ownerId !== actor.id) {
@@ -64,10 +67,8 @@ export async function ensureCanRespondRecording({
 
   const incident = await client.findIncidentById(request.incidentId);
   if (!incident) {
-    // Incident non-existence is a 404 (handled by the service).
-    throw new CommunityAuthorizationError(
-      "Only the camera owner can respond to a recording request",
-    );
+    // Incident non-existence → 404 (verbatim from respond-recording-request.ts:88)
+    throw new CommunityNotFoundError("Incident not found for recording request");
   }
 
   return { camera, incident };

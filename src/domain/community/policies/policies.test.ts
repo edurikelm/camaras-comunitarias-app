@@ -10,7 +10,8 @@ import {
 } from "./_helpers";
 import { ensureCanRegisterCamera } from "./camera/ensure-can-register-camera";
 import { ensureCanReviewCamera } from "./camera/ensure-can-review-camera";
-import { ensureCanModifyPermission } from "./camera/ensure-can-modify-permission";
+import { ensureCanSetPermission } from "./camera/ensure-can-set-permission";
+import { ensureCanRemovePermission } from "./camera/ensure-can-remove-permission";
 import { ensureActiveMemberWithLiveAccess } from "./camera/ensure-active-member-with-live-access";
 import { ensureCanCreateIncident } from "./incident/ensure-can-create-incident";
 import { ensureCanRequestRecording } from "./recording-request/ensure-can-request-recording";
@@ -379,10 +380,31 @@ describe("ensureCanReviewCamera", () => {
 });
 
 // ---------------------------------------------------------------------------
-// ensureCanModifyPermission
+// ensureCanSetPermission
 // ---------------------------------------------------------------------------
 
-describe("ensureCanModifyPermission", () => {
+describe("ensureCanSetPermission", () => {
+  it("throws CommunityNotFoundError when camera does not exist", async () => {
+    const client = createMembershipPort();
+    const findCameraById = vi.fn(async () => null);
+    await expect(
+      ensureCanSetPermission({
+        client: { ...client, findCameraById },
+        actor: { id: "user-admin-1" },
+        cameraId: "camera-nonexistent",
+        communityId: "community-1",
+      }),
+    ).rejects.toThrow(CommunityNotFoundError);
+    await expect(
+      ensureCanSetPermission({
+        client: { ...client, findCameraById },
+        actor: { id: "user-admin-1" },
+        cameraId: "camera-nonexistent",
+        communityId: "community-1",
+      }),
+    ).rejects.toThrow("Camera not found");
+  });
+
   it("throws CommunityAuthorizationError when actor is not the camera owner", async () => {
     const client = createMembershipPort();
     const findCameraById = vi.fn(async () => ({
@@ -398,7 +420,7 @@ describe("ensureCanModifyPermission", () => {
       reviewNote: null,
     }));
     await expect(
-      ensureCanModifyPermission({
+      ensureCanSetPermission({
         client: { ...client, findCameraById },
         actor: { id: "user-neighbor-1" },
         cameraId: "camera-1",
@@ -406,13 +428,146 @@ describe("ensureCanModifyPermission", () => {
       }),
     ).rejects.toThrow(CommunityAuthorizationError);
     await expect(
-      ensureCanModifyPermission({
+      ensureCanSetPermission({
         client: { ...client, findCameraById },
         actor: { id: "user-neighbor-1" },
         cameraId: "camera-1",
         communityId: "community-1",
       }),
     ).rejects.toThrow("Only the camera owner can set permissions");
+  });
+
+  it("returns { camera } when ACTIVE OWNER sets permission", async () => {
+    // Override findActiveNeighborOrGuardMember to recognize user-owner as an active member
+    const client = createMembershipPort({
+      findActiveNeighborOrGuardMember: vi.fn(async (cid, uid) => {
+        if (uid === "user-owner") {
+          return {
+            id: "member-owner",
+            userId: "user-owner",
+            communityId: cid,
+            role: CommunityMemberRole.NEIGHBOR,
+            status: CommunityMemberStatus.ACTIVE,
+          };
+        }
+        return null;
+      }),
+    });
+    const findCameraById = vi.fn(async () => ({
+      id: "camera-1",
+      communityId: "community-1",
+      ownerId: "user-owner",
+      sectorId: null,
+      name: "Camera",
+      description: null,
+      approximateLocation: null,
+      status: CameraStatus.ACTIVE,
+      technicalStatus: null,
+      reviewNote: null,
+    }));
+    const result = await ensureCanSetPermission({
+      client: { ...client, findCameraById },
+      actor: { id: "user-owner" },
+      cameraId: "camera-1",
+      communityId: "community-1",
+    });
+    expect(result.camera).toMatchObject({ id: "camera-1", ownerId: "user-owner" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ensureCanRemovePermission
+// ---------------------------------------------------------------------------
+
+describe("ensureCanRemovePermission", () => {
+  it("throws CommunityNotFoundError when camera does not exist", async () => {
+    const client = createMembershipPort();
+    const findCameraById = vi.fn(async () => null);
+    await expect(
+      ensureCanRemovePermission({
+        client: { ...client, findCameraById },
+        actor: { id: "user-admin-1" },
+        cameraId: "camera-nonexistent",
+        communityId: "community-1",
+      }),
+    ).rejects.toThrow(CommunityNotFoundError);
+    await expect(
+      ensureCanRemovePermission({
+        client: { ...client, findCameraById },
+        actor: { id: "user-admin-1" },
+        cameraId: "camera-nonexistent",
+        communityId: "community-1",
+      }),
+    ).rejects.toThrow("Camera not found");
+  });
+
+  it("throws CommunityAuthorizationError when actor is not the camera owner", async () => {
+    const client = createMembershipPort();
+    const findCameraById = vi.fn(async () => ({
+      id: "camera-1",
+      communityId: "community-1",
+      ownerId: "user-other-owner",
+      sectorId: null,
+      name: "Camera",
+      description: null,
+      approximateLocation: null,
+      status: CameraStatus.ACTIVE,
+      technicalStatus: null,
+      reviewNote: null,
+    }));
+    await expect(
+      ensureCanRemovePermission({
+        client: { ...client, findCameraById },
+        actor: { id: "user-neighbor-1" },
+        cameraId: "camera-1",
+        communityId: "community-1",
+      }),
+    ).rejects.toThrow(CommunityAuthorizationError);
+    await expect(
+      ensureCanRemovePermission({
+        client: { ...client, findCameraById },
+        actor: { id: "user-neighbor-1" },
+        cameraId: "camera-1",
+        communityId: "community-1",
+      }),
+    ).rejects.toThrow("Only the camera owner can remove permissions");
+  });
+
+  it("returns { camera } when ACTIVE OWNER removes permission", async () => {
+    // Override findActiveNeighborOrGuardMember to recognize user-owner as an active member
+    const client = createMembershipPort({
+      findActiveNeighborOrGuardMember: vi.fn(async (cid, uid) => {
+        if (uid === "user-owner") {
+          return {
+            id: "member-owner",
+            userId: "user-owner",
+            communityId: cid,
+            role: CommunityMemberRole.NEIGHBOR,
+            status: CommunityMemberStatus.ACTIVE,
+          };
+        }
+        return null;
+      }),
+    });
+    const findCameraById = vi.fn(async () => ({
+      id: "camera-1",
+      communityId: "community-1",
+      ownerId: "user-owner",
+      sectorId: null,
+      name: "Camera",
+      description: null,
+      approximateLocation: null,
+      status: CameraStatus.ACTIVE,
+      technicalStatus: null,
+      reviewNote: null,
+    }));
+    const result = await ensureCanRemovePermission({
+      client: { ...client, findCameraById },
+      actor: { id: "user-owner" },
+      cameraId: "camera-1",
+      communityId: "community-1",
+    });
+    expect(result.camera).toMatchObject({ id: "camera-1", ownerId: "user-owner" });
   });
 });
 
@@ -421,6 +576,153 @@ describe("ensureCanModifyPermission", () => {
 // ---------------------------------------------------------------------------
 
 describe("ensureActiveMemberWithLiveAccess", () => {
+  it("throws CommunityNotFoundError when camera does not exist", async () => {
+    const client = createMembershipPort({
+      findActiveNeighborOrGuardMember: vi.fn(async (cid, uid) => {
+        if (uid === "user-owner") {
+          return {
+            id: "member-owner",
+            userId: "user-owner",
+            communityId: cid,
+            role: CommunityMemberRole.NEIGHBOR,
+            status: CommunityMemberStatus.ACTIVE,
+          };
+        }
+        return null;
+      }),
+      findActiveAdminMember: vi.fn(async () => null),
+    });
+    const findCameraById = vi.fn(async () => null);
+    const findPermissionByCameraAndRole = vi.fn(async () => null);
+    const findPermissionByCameraAndUser = vi.fn(async () => null);
+    await expect(
+      ensureActiveMemberWithLiveAccess({
+        client: {
+          ...client,
+          findCameraById,
+          findPermissionByCameraAndRole,
+          findPermissionByCameraAndUser,
+        },
+        actor: { id: "user-owner" },
+        cameraId: "camera-nonexistent",
+      }),
+    ).rejects.toThrow(CommunityNotFoundError);
+    await expect(
+      ensureActiveMemberWithLiveAccess({
+        client: {
+          ...client,
+          findCameraById,
+          findPermissionByCameraAndRole,
+          findPermissionByCameraAndUser,
+        },
+        actor: { id: "user-owner" },
+        cameraId: "camera-nonexistent",
+      }),
+    ).rejects.toThrow("Camera not found");
+  });
+
+  it("passes when ACTIVE ADMIN (admin shortcut, no permission lookup needed)", async () => {
+    const client = createMembershipPort({
+      findActiveAdminMember: vi.fn(async (cid, uid) => {
+        if (uid === "user-admin-1") {
+          return {
+            id: "member-admin-1",
+            userId: "user-admin-1",
+            communityId: cid,
+            role: CommunityMemberRole.ADMIN,
+            status: CommunityMemberStatus.ACTIVE,
+          };
+        }
+        return null;
+      }),
+      findActiveNeighborOrGuardMember: vi.fn(async () => null),
+    });
+    const findCameraById = vi.fn(async () => ({
+      id: "camera-1",
+      communityId: "community-1",
+      ownerId: "user-owner",
+      sectorId: null,
+      name: "Camera",
+      description: null,
+      approximateLocation: null,
+      status: CameraStatus.ACTIVE,
+      technicalStatus: null,
+      reviewNote: null,
+    }));
+    const findPermissionByCameraAndRole = vi.fn(async () => null);
+    const findPermissionByCameraAndUser = vi.fn(async () => null);
+    await expect(
+      ensureActiveMemberWithLiveAccess({
+        client: {
+          ...client,
+          findCameraById,
+          findPermissionByCameraAndRole,
+          findPermissionByCameraAndUser,
+        },
+        actor: { id: "user-admin-1" },
+        cameraId: "camera-1",
+      }),
+    ).resolves.toMatchObject({
+      member: expect.objectContaining({ id: "member-admin-1", role: CommunityMemberRole.ADMIN }),
+    });
+  });
+
+  it("passes when ACTIVE NEIGHBOR with role permission canViewLive=true within schedule", async () => {
+    const client = createMembershipPort({
+      findActiveNeighborOrGuardMember: vi.fn(async (cid, uid) => {
+        if (uid === "user-neighbor-1") {
+          return {
+            id: "member-neighbor-1",
+            userId: "user-neighbor-1",
+            communityId: cid,
+            role: CommunityMemberRole.NEIGHBOR,
+            status: CommunityMemberStatus.ACTIVE,
+          };
+        }
+        return null;
+      }),
+      findActiveAdminMember: vi.fn(async () => null),
+    });
+    const findCameraById = vi.fn(async () => ({
+      id: "camera-1",
+      communityId: "community-1",
+      ownerId: "user-owner",
+      sectorId: null,
+      name: "Camera",
+      description: null,
+      approximateLocation: null,
+      status: CameraStatus.ACTIVE,
+      technicalStatus: null,
+      reviewNote: null,
+    }));
+    // Mock role permission: NEIGHBOR role has canViewLive=true with a wide schedule
+    const findPermissionByCameraAndRole = vi.fn(async () => ({
+      id: "perm-role-1",
+      cameraId: "camera-1",
+      roleAllowed: CommunityMemberRole.NEIGHBOR,
+      userIdAllowed: null,
+      canViewLive: true,
+      canRequestRecordings: false,
+      scheduleStart: "00:00",
+      scheduleEnd: "23:59",
+    }));
+    const findPermissionByCameraAndUser = vi.fn(async () => null);
+    await expect(
+      ensureActiveMemberWithLiveAccess({
+        client: {
+          ...client,
+          findCameraById,
+          findPermissionByCameraAndRole,
+          findPermissionByCameraAndUser,
+        },
+        actor: { id: "user-neighbor-1" },
+        cameraId: "camera-1",
+      }),
+    ).resolves.toMatchObject({
+      member: expect.objectContaining({ id: "member-neighbor-1", role: CommunityMemberRole.NEIGHBOR }),
+    });
+  });
+
   it("throws CommunityAuthorizationError when actor has no live access permission", async () => {
     const client = createMembershipPort({
       findActiveNeighborOrGuardMember: vi.fn(async (cid, uid) => {
@@ -571,6 +873,104 @@ describe("ensureCanRequestRecording", () => {
 // ---------------------------------------------------------------------------
 
 describe("ensureCanRespondRecording", () => {
+  it("throws CommunityNotFoundError('Camera not found') when camera does not exist", async () => {
+    const client = createMembershipPort();
+    const findCameraById = vi.fn(async () => null);
+    const findIncidentById = vi.fn(async () => ({
+      id: "incident-1",
+      communityId: "community-1",
+      createdById: "user-creator",
+      status: IncidentStatus.OPEN,
+    }));
+    await expect(
+      ensureCanRespondRecording({
+        client: { ...client, findCameraById, findIncidentById },
+        actor: { id: "user-owner" },
+        request: {
+          id: "request-1",
+          incidentId: "incident-1",
+          cameraId: "camera-nonexistent",
+          requestedById: "user-requester",
+          ownerId: "user-owner",
+          startTime: new Date(),
+          endTime: new Date(),
+          reason: "Investigation",
+          status: "PENDING",
+          ownerComment: null,
+          createdAt: new Date(),
+        },
+      }),
+    ).rejects.toThrow(CommunityNotFoundError);
+    await expect(
+      ensureCanRespondRecording({
+        client: { ...client, findCameraById, findIncidentById },
+        actor: { id: "user-owner" },
+        request: {
+          id: "request-1",
+          incidentId: "incident-1",
+          cameraId: "camera-nonexistent",
+          requestedById: "user-requester",
+          ownerId: "user-owner",
+          startTime: new Date(),
+          endTime: new Date(),
+          reason: "Investigation",
+          status: "PENDING",
+          ownerComment: null,
+          createdAt: new Date(),
+        },
+      }),
+    ).rejects.toThrow("Camera not found");
+  });
+
+  it("throws CommunityNotFoundError('Incident not found for recording request') when incident does not exist", async () => {
+    const client = createMembershipPort();
+    const findCameraById = vi.fn(async () => ({
+      id: "camera-1",
+      communityId: "community-1",
+      ownerId: "user-owner",
+      status: CameraStatus.ACTIVE,
+    }));
+    const findIncidentById = vi.fn(async () => null);
+    await expect(
+      ensureCanRespondRecording({
+        client: { ...client, findCameraById, findIncidentById },
+        actor: { id: "user-owner" },
+        request: {
+          id: "request-1",
+          incidentId: "incident-nonexistent",
+          cameraId: "camera-1",
+          requestedById: "user-requester",
+          ownerId: "user-owner",
+          startTime: new Date(),
+          endTime: new Date(),
+          reason: "Investigation",
+          status: "PENDING",
+          ownerComment: null,
+          createdAt: new Date(),
+        },
+      }),
+    ).rejects.toThrow(CommunityNotFoundError);
+    await expect(
+      ensureCanRespondRecording({
+        client: { ...client, findCameraById, findIncidentById },
+        actor: { id: "user-owner" },
+        request: {
+          id: "request-1",
+          incidentId: "incident-nonexistent",
+          cameraId: "camera-1",
+          requestedById: "user-requester",
+          ownerId: "user-owner",
+          startTime: new Date(),
+          endTime: new Date(),
+          reason: "Investigation",
+          status: "PENDING",
+          ownerComment: null,
+          createdAt: new Date(),
+        },
+      }),
+    ).rejects.toThrow("Incident not found for recording request");
+  });
+
   it("throws CommunityAuthorizationError when actor is not camera owner", async () => {
     const client = createMembershipPort();
     const findCameraById = vi.fn(async () => ({

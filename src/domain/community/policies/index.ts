@@ -1,7 +1,8 @@
 // Camera policies
 export { ensureCanRegisterCamera } from "./camera/ensure-can-register-camera";
 export { ensureCanReviewCamera } from "./camera/ensure-can-review-camera";
-export { ensureCanModifyPermission } from "./camera/ensure-can-modify-permission";
+export { ensureCanSetPermission } from "./camera/ensure-can-set-permission";
+export { ensureCanRemovePermission } from "./camera/ensure-can-remove-permission";
 export { ensureActiveMemberWithLiveAccess } from "./camera/ensure-active-member-with-live-access";
 
 // Incident policies

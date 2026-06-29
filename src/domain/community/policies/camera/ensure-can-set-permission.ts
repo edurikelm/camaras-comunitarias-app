@@ -1,8 +1,8 @@
 /**
- * Authorization policy for modifying (setting or removing) a camera permission.
+ * Authorization policy for setting a camera permission.
  *
  * Rule (CONTEXT.md §Camera Permission Rules):
- *   Only the camera owner can set/remove permissions.
+ *   Only the camera owner can set permissions.
  *
  * Errors:
  *   - CommunityNotFoundError("Community not found")
@@ -25,7 +25,7 @@ import {
 } from "@/domain/community/errors";
 import { ensureActiveCommunity, findAnyActiveMember } from "../_helpers";
 
-export type EnsureCanModifyPermissionOptions = {
+export type EnsureCanSetPermissionOptions = {
   client: MembershipLookupsPort & Pick<CameraRepository, "findCameraById">;
   actor: { id: string };
   cameraId: string;
@@ -33,7 +33,7 @@ export type EnsureCanModifyPermissionOptions = {
 };
 
 /**
- * Validates the actor can modify the camera's permissions.
+ * Validates the actor can set the camera's permissions.
  * Checks:
  *  1. Community ACTIVE
  *  2. Actor is an ACTIVE member of the community
@@ -42,12 +42,12 @@ export type EnsureCanModifyPermissionOptions = {
  *
  * Returns the validated camera record so callers avoid a redundant lookup.
  */
-export async function ensureCanModifyPermission({
+export async function ensureCanSetPermission({
   client,
   actor,
   cameraId,
   communityId,
-}: EnsureCanModifyPermissionOptions): Promise<{ camera: CameraRecord }> {
+}: EnsureCanSetPermissionOptions): Promise<{ camera: CameraRecord }> {
   await ensureActiveCommunity(client, communityId);
 
   const member = await findAnyActiveMember(client, communityId, actor.id);
