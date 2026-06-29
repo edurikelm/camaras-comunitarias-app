@@ -1,17 +1,16 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { RecordingRequestRepository } from "@/domain/community/recording/recording-request-repository";
 import type {
-  CommunityLookupRecord,
   IncidentLookupRecord,
   CameraLookupRecord,
   RecordingRequestRecord,
-  MemberLookupRecord,
   CreateRecordingRequestInsert,
   UpdateRecordingRequestInput,
   CreateAuditLogInput,
 } from "@/domain/community/recording/recording-request-repository";
 import { createTransactionalRepository } from "@/infrastructure/prisma/_internal/create-transactional-repository";
 import type { AuditLogPort } from "@/domain/shared/audit-log";
+import { createPrismaMembershipLookupsAdapter } from "@/infrastructure/prisma/membership-lookups-adapter";
 
 /**
  * Prisma-backed RecordingRequestRepository.
@@ -27,21 +26,14 @@ export function createPrismaRecordingRequestRepository(
   function createUnitOfWork(
     tx: Prisma.TransactionClient,
   ): RecordingRequestRepository {
+    const membershipLookups = createPrismaMembershipLookupsAdapter(tx);
+
     return {
+      ...membershipLookups,
+
       // -----------------------------------------------------------------------
       // Lookup queries
       // -----------------------------------------------------------------------
-
-      async findCommunityById(id) {
-        const row = await tx.community.findUnique({
-          where: { id },
-          select: {
-            id: true,
-            status: true,
-          },
-        });
-        return row as CommunityLookupRecord | null;
-      },
 
       async findIncidentById(id) {
         const row = await tx.incident.findUnique({
@@ -87,48 +79,6 @@ export function createPrismaRecordingRequestRepository(
           },
         });
         return row as RecordingRequestRecord | null;
-      },
-
-      // -----------------------------------------------------------------------
-      // Community membership queries
-      // -----------------------------------------------------------------------
-
-      async findActiveNeighborOrGuardMember(communityId, userId) {
-        const row = await tx.communityMember.findFirst({
-          where: {
-            userId,
-            communityId,
-            status: "ACTIVE",
-            role: { in: ["NEIGHBOR", "GUARD"] },
-          },
-          select: {
-            id: true,
-            userId: true,
-            communityId: true,
-            role: true,
-            status: true,
-          },
-        });
-        return row as MemberLookupRecord | null;
-      },
-
-      async findActiveAdminMember(communityId, userId) {
-        const row = await tx.communityMember.findFirst({
-          where: {
-            userId,
-            communityId,
-            role: "ADMIN",
-            status: "ACTIVE",
-          },
-          select: {
-            id: true,
-            userId: true,
-            communityId: true,
-            role: true,
-            status: true,
-          },
-        });
-        return row as MemberLookupRecord | null;
       },
 
       // -----------------------------------------------------------------------

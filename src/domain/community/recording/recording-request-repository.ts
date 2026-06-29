@@ -1,5 +1,10 @@
-import { AuditAction, CameraStatus, CommunityStatus, IncidentStatus, RecordingRequestStatus } from "@/generated/prisma/enums";
-import type { CommunityMemberRole, CommunityMemberStatus } from "@/generated/prisma/enums";
+import {
+  AuditAction,
+  CameraStatus,
+  IncidentStatus,
+  RecordingRequestStatus,
+} from "@/generated/prisma/enums";
+import type { MembershipLookupsPort } from "@/domain/community/membership/membership-lookups";
 
 // ---------------------------------------------------------------------------
 // Record types
@@ -31,19 +36,6 @@ export type RecordingRequestRecord = {
   status: RecordingRequestStatus;
   ownerComment: string | null;
   createdAt: Date;
-};
-
-export type CommunityLookupRecord = {
-  id: string;
-  status: CommunityStatus;
-};
-
-export type MemberLookupRecord = {
-  id: string;
-  userId: string;
-  communityId: string;
-  role: CommunityMemberRole;
-  status: CommunityMemberStatus;
 };
 
 // ---------------------------------------------------------------------------
@@ -79,22 +71,11 @@ export type CreateAuditLogInput = {
 // Repository interface
 // ---------------------------------------------------------------------------
 
-export interface RecordingRequestRepository {
+export interface RecordingRequestRepository extends MembershipLookupsPort {
   // Lookup queries
-  findCommunityById(id: string): Promise<CommunityLookupRecord | null>;
   findIncidentById(id: string): Promise<IncidentLookupRecord | null>;
   findCameraById(id: string): Promise<CameraLookupRecord | null>;
   findRecordingRequestById(id: string): Promise<RecordingRequestRecord | null>;
-
-  // Community membership queries
-  findActiveNeighborOrGuardMember(
-    communityId: string,
-    userId: string,
-  ): Promise<MemberLookupRecord | null>;
-  findActiveAdminMember(
-    communityId: string,
-    userId: string,
-  ): Promise<MemberLookupRecord | null>;
 
   // Mutations
   createRecordingRequest(input: CreateRecordingRequestInsert): Promise<RecordingRequestRecord>;

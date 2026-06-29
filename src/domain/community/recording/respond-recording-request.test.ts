@@ -20,6 +20,7 @@ function createRepository(
   const repository: RecordingRequestRepository = {
     findCommunityById: vi.fn(async () => ({
       id: "community-1",
+      name: "Barrio Norte",
       status: CommunityStatus.ACTIVE,
     })),
     findIncidentById: vi.fn(async () => ({
@@ -49,6 +50,9 @@ function createRepository(
     })),
     findActiveNeighborOrGuardMember: vi.fn(),
     findActiveAdminMember: vi.fn(),
+    findActiveMember: vi.fn(),
+    findActiveAdminOrGuardMember: vi.fn(),
+    findSectorById: vi.fn(),
     createRecordingRequest: vi.fn(),
     updateRecordingRequest: vi.fn(async (_id, input) => ({
       id: "recording-request-1",
@@ -282,6 +286,7 @@ describe("respondRecordingRequest", () => {
     const repository = createRepository({
       findCommunityById: vi.fn(async () => ({
         id: "community-1",
+        name: "Barrio Norte",
         status: CommunityStatus.SUSPENDED,
       })),
     });
