@@ -1,10 +1,9 @@
 import { AuditAction, CameraStatus } from "@/generated/prisma/enums";
 import {
-  CommunityAuthorizationError,
   CommunityInvariantError,
-  CommunityNotFoundError,
 } from "@/domain/community/errors";
 import type { CameraRepository } from "./camera-repository";
+import { ensureCanReviewCamera } from "@/domain/community/policies";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -63,52 +62,22 @@ export async function reviewCamera(
   }
 
   return cameraRepository.runInTransaction(async (tx) => {
-    // 1. Validate community exists and is ACTIVE
-    const community = await tx.findCommunityById(communityId);
-    if (!community) {
-      throw new CommunityNotFoundError("Community not found");
-    }
-    if (community.status !== "ACTIVE") {
-      throw new CommunityInvariantError("Community is not active");
-    }
-
-    // 2. Validate actor is ACTIVE ADMIN of the community
-    const actorMember = await tx.findActiveAdminMember(
+    // 1. Validate actor can review this camera (community ACTIVE + actor is ADMIN + camera exists + self-review prevention)
+    const { camera } = await ensureCanReviewCamera({
+      client: tx,
+      actor: input.actor,
+      cameraId,
       communityId,
-      input.actor.id,
-    );
-    if (!actorMember) {
-      throw new CommunityAuthorizationError(
-        "Only an ACTIVE ADMIN can review cameras",
-      );
-    }
+    });
 
-    // 3. Validate camera exists and belongs to this community
-    const camera = await tx.findCameraById(cameraId);
-    if (!camera) {
-      throw new CommunityNotFoundError("Camera not found");
-    }
-    if (camera.communityId !== communityId) {
-      throw new CommunityInvariantError(
-        "Camera does not belong to this community",
-      );
-    }
-
-    // 4. Validate camera is in PENDING_REVIEW
+    // 2. Validate camera is in PENDING_REVIEW (resource state invariant)
     if (camera.status !== CameraStatus.PENDING_REVIEW) {
       throw new CommunityInvariantError(
         "Camera is not pending review",
       );
     }
 
-    // 4a. Prevent ADMIN from reviewing their own camera
-    if (camera.ownerId === input.actor.id) {
-      throw new CommunityAuthorizationError(
-        "An ADMIN cannot review their own camera",
-      );
-    }
-
-    // 5. Apply action
+    // 3. Apply action
     const newStatus =
       input.action === "APPROVE"
         ? CameraStatus.ACTIVE
@@ -125,7 +94,7 @@ export async function reviewCamera(
       reviewNote,
     });
 
-    // 6. Audit
+    // 4. Audit
     await tx.createAuditLog({
       communityId,
       actorId: input.actor.id,

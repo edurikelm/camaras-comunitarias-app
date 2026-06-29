@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { AuditAction, IncidentStatus } from "@/generated/prisma/enums";
 import {
-  CommunityAuthorizationError,
   CommunityInvariantError,
   CommunityNotFoundError,
 } from "@/domain/community/errors";
 import type { EvidenceRepository } from "./evidence-repository";
 import type { EvidenceStoragePort } from "./evidence-storage";
+import { ensureCanUploadEvidence } from "@/domain/community/policies";
 
 // ---------------------------------------------------------------------------
 // Allowed MIME types for evidence uploads
@@ -127,24 +127,14 @@ export async function uploadEvidence(
   // 2. Execute Prisma transaction with compensation on failure
   try {
     return await evidenceRepository.runInTransaction(async (tx) => {
-      // Validate community exists and is ACTIVE
-      const community = await tx.findCommunityById(communityId);
-      if (!community) {
-        throw new CommunityNotFoundError("Community not found");
-      }
-      if (community.status !== "ACTIVE") {
-        throw new CommunityInvariantError("Community is not active");
-      }
+      // 1. Validate actor can upload evidence (community ACTIVE + member ACTIVE)
+      await ensureCanUploadEvidence({
+        client: tx,
+        actor: input.actor,
+        communityId,
+      });
 
-      // Validate actor is an ACTIVE member (any role: NEIGHBOR, GUARD, ADMIN)
-      const actorMember = await tx.findActiveMember(communityId, input.actor.id);
-      if (!actorMember) {
-        throw new CommunityAuthorizationError(
-          "Only an ACTIVE community member can upload evidence",
-        );
-      }
-
-      // Validate incident exists in the same community and is OPEN or REVIEWING
+      // 2. Validate incident exists in the same community and is OPEN or REVIEWING
       const incident = await tx.findIncidentById(communityId, incidentId);
       if (!incident) {
         throw new CommunityNotFoundError("Incident not found");
@@ -158,7 +148,7 @@ export async function uploadEvidence(
         );
       }
 
-      // Persist evidence record in DB
+      // 3. Persist evidence record in DB
       const evidence = await tx.createEvidence({
         communityId,
         incidentId,
@@ -168,7 +158,7 @@ export async function uploadEvidence(
         metadata: input.metadata,
       });
 
-      // Audit
+      // 4. Audit
       await tx.createAuditLog({
         communityId,
         actorId: input.actor.id,

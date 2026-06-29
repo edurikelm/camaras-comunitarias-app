@@ -7,8 +7,8 @@
  * Errors:
  *   - CommunityNotFoundError("Incident not found")
  *   - CommunityInvariantError("Cannot request recordings for a closed incident")
- *   - CommunityNotFoundError("Community not found") (via ensureActiveCommunity)
- *   - CommunityInvariantError("Community is not active") (via ensureActiveCommunity)
+ *   - CommunityNotFoundError("Community not found")
+ *   - CommunityInvariantError("Community is not active; recording requests are disabled")
  *   - CommunityNotFoundError("Camera not found")
  *   - CommunityInvariantError("Camera does not belong to the incident's community")
  *   - CommunityInvariantError("Camera is not active")
@@ -30,7 +30,7 @@ import {
   CommunityInvariantError,
   CommunityNotFoundError,
 } from "@/domain/community/errors";
-import { ensureActiveCommunity, findAnyActiveMember } from "../_helpers";
+import { findAnyActiveMember } from "../_helpers";
 
 export type EnsureCanRequestRecordingOptions = {
   client: MembershipLookupsPort &
@@ -69,7 +69,15 @@ export async function ensureCanRequestRecording({
     );
   }
 
-  await ensureActiveCommunity(client, incident.communityId);
+  const community = await client.findCommunityById(incident.communityId);
+  if (!community) {
+    throw new CommunityNotFoundError("Community not found");
+  }
+  if (community.status !== "ACTIVE") {
+    throw new CommunityInvariantError(
+      "Community is not active; recording requests are disabled",
+    );
+  }
 
   const camera = await client.findCameraById(cameraId);
   if (!camera) {

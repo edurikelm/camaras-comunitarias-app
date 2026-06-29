@@ -1,10 +1,10 @@
 import { AuditAction, RecordingRequestStatus } from "@/generated/prisma/enums";
 import {
-  CommunityAuthorizationError,
   CommunityInvariantError,
   CommunityNotFoundError,
 } from "@/domain/community/errors";
 import type { RecordingRequestRepository } from "./recording-request-repository";
+import { ensureCanRespondRecording } from "@/domain/community/policies";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -64,29 +64,19 @@ export async function respondRecordingRequest(
       );
     }
 
-    // 2. Find camera and verify ownership
-    const camera = await tx.findCameraById(request.cameraId);
-    if (!camera) {
-      throw new CommunityNotFoundError("Camera not found");
-    }
+    // 2. Find camera and validate ownership via policy
+    const { camera, incident } = await ensureCanRespondRecording({
+      client: tx,
+      actor: input.actor,
+      request,
+    });
 
-    // Actor must be the camera owner
-    if (camera.ownerId !== input.actor.id) {
-      throw new CommunityAuthorizationError(
-        "Only the camera owner can respond to a recording request",
-      );
-    }
-
-    // Camera must be ACTIVE
+    // 3. Validate camera is ACTIVE (resource state invariant)
     if (camera.status !== "ACTIVE") {
       throw new CommunityInvariantError("Camera is not active");
     }
 
-    // 3. Community must be ACTIVE
-    const incident = await tx.findIncidentById(request.incidentId);
-    if (!incident) {
-      throw new CommunityNotFoundError("Incident not found for recording request");
-    }
+    // 4. Validate community is ACTIVE
     const community = await tx.findCommunityById(incident.communityId);
     if (!community) {
       throw new CommunityNotFoundError("Community not found");
@@ -97,7 +87,7 @@ export async function respondRecordingRequest(
       );
     }
 
-    // 4. Update recording request
+    // 5. Update recording request
     const newStatus =
       input.action === "ACCEPT"
         ? RecordingRequestStatus.ACCEPTED
@@ -108,7 +98,7 @@ export async function respondRecordingRequest(
       ownerComment: input.ownerComment ?? null,
     });
 
-    // 5. Audit
+    // 6. Audit
     const auditAction =
       input.action === "ACCEPT"
         ? AuditAction.RECORDING_REQUEST_ACCEPTED

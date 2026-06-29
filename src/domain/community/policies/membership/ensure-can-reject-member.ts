@@ -15,7 +15,7 @@
  * Returns the target member record on success.
  */
 
-import type { CommunityMembershipRepository } from "@/domain/community/community-repository";
+import type { CommunityUnitOfWork } from "@/domain/community/community-repository";
 import type { CommunityMemberRecord } from "@/domain/community/community-repository";
 import { CommunityMemberStatus } from "@/generated/prisma/enums";
 import {
@@ -26,7 +26,7 @@ import {
 import { ensureActiveCommunity } from "../_helpers";
 
 export type EnsureCanRejectMemberOptions = {
-  client: CommunityMembershipRepository;
+  client: CommunityUnitOfWork;
   actor: { id: string };
   communityId: string;
   memberId: string;

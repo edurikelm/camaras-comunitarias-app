@@ -4,13 +4,12 @@ import {
   CommunityMemberRole,
 } from "@/generated/prisma/enums";
 import {
-  CommunityAuthorizationError,
   CommunityInvariantError,
-  CommunityNotFoundError,
 } from "@/domain/community/errors";
 import type { CameraRepository } from "./camera-repository";
 import { isValidHHMM } from "./schedule";
 import { isUuid } from "@/domain/shared/validators";
+import { ensureCanSetPermission } from "@/domain/community/policies";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -126,54 +125,15 @@ export async function setCameraPermission(
   }
 
   return cameraRepository.runInTransaction(async (tx) => {
-    // 1. Validate community exists and is ACTIVE
-    const community = await tx.findCommunityById(communityId);
-    if (!community) {
-      throw new CommunityNotFoundError("Community not found");
-    }
-    if (community.status !== "ACTIVE") {
-      throw new CommunityInvariantError("Community is not active");
-    }
+    // 1. Validate actor can set permission (community ACTIVE + member active + camera exists/ACTIVE/owner)
+    const { camera } = await ensureCanSetPermission({
+      client: tx,
+      actor: input.actor,
+      cameraId,
+      communityId,
+    });
 
-    // 2. Validate actor is an ACTIVE member of the community
-    const actorMember =
-      (await tx.findActiveNeighborOrGuardMember(
-        communityId,
-        input.actor.id,
-      )) ??
-      (await tx.findActiveAdminMember(communityId, input.actor.id));
-    if (!actorMember) {
-      throw new CommunityAuthorizationError(
-        "Only an ACTIVE member of the community can set camera permissions",
-      );
-    }
-
-    // 3. Validate camera exists and belongs to this community
-    const camera = await tx.findCameraById(cameraId);
-    if (!camera) {
-      throw new CommunityNotFoundError("Camera not found");
-    }
-    if (camera.communityId !== communityId) {
-      throw new CommunityInvariantError(
-        "Camera does not belong to this community",
-      );
-    }
-
-    // 4. Validate camera is ACTIVE
-    if (camera.status !== CameraStatus.ACTIVE) {
-      throw new CommunityInvariantError(
-        "Camera must be ACTIVE to configure permissions",
-      );
-    }
-
-    // 5. Validate actor is the camera owner
-    if (camera.ownerId !== input.actor.id) {
-      throw new CommunityAuthorizationError(
-        "Only the camera owner can set permissions",
-      );
-    }
-
-    // 6. Execute upsert
+    // 2. Execute upsert
     const permission = await tx.upsertCameraPermission(cameraId, {
       roleAllowed: hasRole ? (input.permission.role ?? null) : null,
       userIdAllowed: hasUserId ? (input.permission.userId ?? null) : null,
@@ -183,7 +143,7 @@ export async function setCameraPermission(
       scheduleEnd,
     });
 
-    // 7. Audit
+    // 3. Audit
     await tx.createAuditLog({
       communityId,
       actorId: input.actor.id,

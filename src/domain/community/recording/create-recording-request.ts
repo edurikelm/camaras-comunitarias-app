@@ -1,10 +1,7 @@
 import { AuditAction, RecordingRequestStatus } from "@/generated/prisma/enums";
-import {
-  CommunityAuthorizationError,
-  CommunityInvariantError,
-  CommunityNotFoundError,
-} from "@/domain/community/errors";
+import { CommunityInvariantError } from "@/domain/community/errors";
 import type { RecordingRequestRepository } from "./recording-request-repository";
+import { ensureCanRequestRecording } from "@/domain/community/policies";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -98,77 +95,15 @@ export async function createRecordingRequest(
   }
 
   return recordingRequestRepository.runInTransaction(async (tx) => {
-    // 1. Find incident
-    const incident = await tx.findIncidentById(incidentId);
-    if (!incident) {
-      throw new CommunityNotFoundError("Incident not found");
-    }
+    // 1. Validate actor can request recording (incident/camera/community checks + membership + role)
+    const { incident, camera } = await ensureCanRequestRecording({
+      client: tx,
+      actor: input.actor,
+      incidentId,
+      cameraId,
+    });
 
-    // Incident must be OPEN or REVIEWING
-    if (incident.status === "CLOSED") {
-      throw new CommunityInvariantError(
-        "Cannot request recordings for a closed incident",
-      );
-    }
-
-    // 2. Community must be ACTIVE
-    const community = await tx.findCommunityById(incident.communityId);
-    if (!community) {
-      throw new CommunityNotFoundError("Community not found");
-    }
-    if (community.status !== "ACTIVE") {
-      throw new CommunityInvariantError(
-        "Community is not active; recording requests are disabled",
-      );
-    }
-
-    // 3. Find camera
-    const camera = await tx.findCameraById(cameraId);
-    if (!camera) {
-      throw new CommunityNotFoundError("Camera not found");
-    }
-
-    // Camera must belong to the same community as the incident
-    if (camera.communityId !== incident.communityId) {
-      throw new CommunityInvariantError(
-        "Camera does not belong to the incident's community",
-      );
-    }
-
-    // Camera must be ACTIVE
-    if (camera.status !== "ACTIVE") {
-      throw new CommunityInvariantError("Camera is not active");
-    }
-
-    // 3. Check actor membership
-    const neighborOrGuard =
-      await tx.findActiveNeighborOrGuardMember(
-        incident.communityId,
-        input.actor.id,
-      );
-    const admin = await tx.findActiveAdminMember(
-      incident.communityId,
-      input.actor.id,
-    );
-
-    if (!neighborOrGuard && !admin) {
-      throw new CommunityAuthorizationError(
-        "Not an active member of this community",
-      );
-    }
-
-    // 4. Actor must be incident creator, ADMIN, or GUARD
-    const isAdmin = !!admin;
-    const isGuard = neighborOrGuard?.role === "GUARD";
-    const isCreator = incident.createdById === input.actor.id;
-
-    if (!isCreator && !isAdmin && !isGuard) {
-      throw new CommunityAuthorizationError(
-        "Only the incident creator, ADMIN, or GUARD can request recordings",
-      );
-    }
-
-    // 5. Create recording request
+    // 2. Create recording request
     const created = await tx.createRecordingRequest({
       incidentId: incident.id,
       cameraId: camera.id,
@@ -180,7 +115,7 @@ export async function createRecordingRequest(
       status: RecordingRequestStatus.PENDING,
     });
 
-    // 6. Audit
+    // 3. Audit
     await tx.createAuditLog({
       communityId: incident.communityId,
       actorId: input.actor.id,

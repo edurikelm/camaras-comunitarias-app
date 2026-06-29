@@ -1,11 +1,11 @@
 import { AuditAction } from "@/generated/prisma/enums";
 import {
-  CommunityAuthorizationError,
   CommunityInvariantError,
   CommunityNotFoundError,
 } from "@/domain/community/errors";
 import type { EvidenceRepository } from "./evidence-repository";
 import type { EvidenceStoragePort } from "./evidence-storage";
+import { ensureCanViewEvidence } from "@/domain/community/policies";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -64,16 +64,7 @@ export async function getEvidence(
 ): Promise<GetEvidenceResult> {
   const { communityId, incidentId } = input;
 
-  // 1. Validate community exists and is ACTIVE
-  const community = await evidenceRepository.findCommunityById(communityId);
-  if (!community) {
-    throw new CommunityNotFoundError("Community not found");
-  }
-  if (community.status !== "ACTIVE") {
-    throw new CommunityInvariantError("Community is not active");
-  }
-
-  // 2. Validate incident exists in this community
+  // 1. Validate incident exists in this community (resource existence check → 404)
   const incident = await evidenceRepository.findIncidentById(
     communityId,
     incidentId,
@@ -82,30 +73,20 @@ export async function getEvidence(
     throw new CommunityNotFoundError("Incident not found");
   }
 
-  // 3. Check actor authorization:
-  //    - Creator of the incident can view evidence, OR
-  //    - ACTIVE ADMIN or GUARD member of the community can view evidence
-  const isCreator = incident.createdById === input.actor.id;
+  // 2. Validate actor can view evidence (community ACTIVE + creator/ADMIN/GUARD check)
+  await ensureCanViewEvidence({
+    client: evidenceRepository,
+    actor: input.actor,
+    incident,
+    communityId,
+  });
 
-  if (!isCreator) {
-    const authorizedMember =
-      await evidenceRepository.findActiveAdminOrGuardMember(
-        communityId,
-        input.actor.id,
-      );
-    if (!authorizedMember) {
-      throw new CommunityAuthorizationError(
-        "Only the incident creator, an ADMIN, or a GUARD can view evidence",
-      );
-    }
-  }
-
-  // 4. Fetch all evidence records for this incident
+  // 3. Fetch all evidence records for this incident
   const evidenceRecords = await evidenceRepository.findEvidenceByIncident(
     incidentId,
   );
 
-  // 5. Generate signed URLs for each evidence item
+  // 4. Generate signed URLs for each evidence item
   const items: EvidenceItem[] = await Promise.all(
     evidenceRecords.map(async (record) => {
       const signedUrl = await evidenceStorage.createSignedUrl(

@@ -5,14 +5,13 @@ import {
   CommunityStatus,
 } from "@/generated/prisma/enums";
 import {
-  CommunityAuthorizationError,
   CommunityInvariantError,
-  CommunityNotFoundError,
 } from "@/domain/community/errors";
 import type {
   CommunityMembershipRepository,
   CommunityUnitOfWork,
 } from "@/domain/community/community-repository";
+import { ensureCanApproveMember } from "@/domain/community/policies";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -79,49 +78,21 @@ export async function approveCommunityMember(
   }
 
   return repository.runInTransaction(async (tx: CommunityUnitOfWork) => {
-    // 1. Validate community exists and is ACTIVE
-    const community = await tx.findCommunityById(communityId);
-    if (!community) {
-      throw new CommunityNotFoundError("Community not found");
-    }
-    if (community.status !== CommunityStatus.ACTIVE) {
-      throw new CommunityInvariantError("Community is not active");
-    }
-
-    // 2. Validate actor is ACTIVE ADMIN of the community
-    const actorMember = await tx.findActiveAdminMember(
+    // 1. Validate actor can approve member (community ACTIVE + actor ADMIN + target member exists/PENDING/belongs)
+    const { targetMember } = await ensureCanApproveMember({
+      client: tx,
+      actor: input.actor,
       communityId,
-      input.actor.id,
-    );
-    if (!actorMember) {
-      throw new CommunityAuthorizationError(
-        "Only an ACTIVE ADMIN can approve members",
-      );
-    }
+      memberId,
+    });
 
-    // 3. Validate target member exists and is PENDING in the same community
-    const targetMember = await tx.findCommunityMemberById(memberId);
-    if (!targetMember) {
-      throw new CommunityNotFoundError("Member not found");
-    }
-    if (targetMember.communityId !== communityId) {
-      throw new CommunityInvariantError(
-        "Member does not belong to this community",
-      );
-    }
-    if (targetMember.status !== CommunityMemberStatus.PENDING) {
-      throw new CommunityInvariantError(
-        "Only PENDING members can be approved",
-      );
-    }
-
-    // 4. Activate and set role
+    // 2. Activate and set role
     const updatedMember = await tx.updateCommunityMember(memberId, {
       status: CommunityMemberStatus.ACTIVE,
       role: input.role,
     });
 
-    // 5. Audit
+    // 3. Audit
     await tx.createAuditLog({
       communityId,
       actorId: input.actor.id,

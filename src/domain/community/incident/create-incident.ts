@@ -1,10 +1,10 @@
 import { AuditAction, IncidentType, AlertSeverity, IncidentStatus } from "@/generated/prisma/enums";
 import {
-  CommunityAuthorizationError,
   CommunityInvariantError,
   CommunityNotFoundError,
 } from "@/domain/community/errors";
 import type { IncidentRepository } from "./incident-repository";
+import { ensureCanCreateIncident } from "@/domain/community/policies";
 
 // ---------------------------------------------------------------------------
 // Severity suggestion
@@ -97,27 +97,14 @@ export async function createIncident(
   }
 
   return incidentRepository.runInTransaction(async (tx) => {
-    // 1. Validate community exists and is ACTIVE
-    const community = await tx.findCommunityById(communityId);
-    if (!community) {
-      throw new CommunityNotFoundError("Community not found");
-    }
-    if (community.status !== "ACTIVE") {
-      throw new CommunityInvariantError("Community is not active");
-    }
-
-    // 2. Validate actor is ACTIVE member with role NEIGHBOR or GUARD
-    const actorMember = await tx.findActiveNeighborOrGuardMember(
+    // 1. Validate actor can create incident (community ACTIVE + member is NEIGHBOR or GUARD)
+    await ensureCanCreateIncident({
+      client: tx,
+      actor: input.actor,
       communityId,
-      input.actor.id,
-    );
-    if (!actorMember) {
-      throw new CommunityAuthorizationError(
-        "Only an ACTIVE NEIGHBOR or GUARD can create an incident",
-      );
-    }
+    });
 
-    // 3. If sectorId provided, verify it belongs to the community
+    // 2. If sectorId provided, verify it belongs to the community
     const sectorId = incident.sectorId ?? null;
     if (sectorId) {
       const sector = await tx.findSectorById(sectorId);
@@ -129,15 +116,15 @@ export async function createIncident(
       }
     }
 
-    // 4. Suggest severity by type
+    // 3. Suggest severity by type
     const severity = suggestSeverity(incident.type);
 
-    // 5. Build alert message
+    // 4. Build alert message
     const location = incident.location?.trim() ?? null;
     const locationPart = location ? ` en ${location}` : "";
     const alertMessage = `${incident.type} reportado${locationPart}: ${description}`;
 
-    // 6. Create incident
+    // 5. Create incident
     const createdIncident = await tx.createIncident({
       communityId,
       createdById: input.actor.id,
@@ -148,7 +135,7 @@ export async function createIncident(
       location,
     });
 
-    // 7. Create alert
+    // 6. Create alert
     const alert = await tx.createAlert({
       communityId,
       incidentId: createdIncident.id,
@@ -158,7 +145,7 @@ export async function createIncident(
       message: alertMessage,
     });
 
-    // 8. Audit
+    // 7. Audit
     await tx.createAuditLog({
       communityId,
       actorId: input.actor.id,

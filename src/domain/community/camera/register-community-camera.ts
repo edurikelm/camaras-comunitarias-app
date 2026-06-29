@@ -1,11 +1,8 @@
 import { AuditAction, CameraStatus } from "@/generated/prisma/enums";
-import {
-  CommunityAuthorizationError,
-  CommunityInvariantError,
-  CommunityNotFoundError,
-} from "@/domain/community/errors";
+import { CommunityInvariantError } from "@/domain/community/errors";
 import type { CameraRepository } from "./camera-repository";
 import { isRtspUrl } from "@/domain/shared/validators";
+import { ensureCanRegisterCamera } from "@/domain/community/policies";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -76,26 +73,14 @@ export async function registerCommunityCamera(
   }
 
   return cameraRepository.runInTransaction(async (tx) => {
-    // 1. Validate community exists and is ACTIVE
-    const community = await tx.findCommunityById(communityId);
-    if (!community) {
-      throw new CommunityNotFoundError("Community not found");
-    }
-    if (community.status !== "ACTIVE") {
-      throw new CommunityInvariantError("Community is not active");
-    }
+    // 1. Validate actor can register a camera (community ACTIVE + member is NEIGHBOR/GUARD/ADMIN)
+    await ensureCanRegisterCamera({
+      client: tx,
+      actor: input.actor,
+      communityId,
+    });
 
-    // 2. Validate actor is ACTIVE member (NEIGHBOR, GUARD, or ADMIN)
-    const actorMember =
-      (await tx.findActiveNeighborOrGuardMember(communityId, input.actor.id)) ??
-      (await tx.findActiveAdminMember(communityId, input.actor.id));
-    if (!actorMember) {
-      throw new CommunityAuthorizationError(
-        "Only an ACTIVE NEIGHBOR, GUARD, or ADMIN can register a camera",
-      );
-    }
-
-    // 3. If sectorId provided, verify it belongs to the community
+    // 2. If sectorId provided, verify it belongs to the community
     if (input.sectorId) {
       const sector = await tx.findSectorById(input.sectorId);
       if (!sector || sector.communityId !== communityId) {
@@ -105,7 +90,7 @@ export async function registerCommunityCamera(
       }
     }
 
-    // 4. Create camera (repository handles encryption/hashing internally)
+    // 3. Create camera (repository handles encryption/hashing internally)
     const camera = await tx.createCamera({
       communityId,
       ownerId: input.actor.id,

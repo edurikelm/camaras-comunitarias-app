@@ -66,7 +66,7 @@ export async function ensureCanRemovePermission({
   }
   if (camera.status !== CameraStatus.ACTIVE) {
     throw new CommunityInvariantError(
-      "Camera must be ACTIVE to configure permissions",
+      "Camera must be ACTIVE to remove permissions",
     );
   }
   if (camera.ownerId !== actor.id) {

@@ -1,14 +1,13 @@
-import { AuditAction, CommunityStatus } from "@/generated/prisma/enums";
+import { AuditAction } from "@/generated/prisma/enums";
 import {
-  CommunityAuthorizationError,
   CommunityInvariantError,
-  CommunityNotFoundError,
 } from "@/domain/community/errors";
 import type {
   CommunityMembershipRepository,
   CommunityUnitOfWork,
 } from "@/domain/community/community-repository";
 import { generateInviteCode, hashInviteCode } from "@/lib/crypto";
+import { ensureCanCreateInvitation } from "@/domain/community/policies";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -56,32 +55,19 @@ export async function createCommunityInvitation(
   }
 
   return repository.runInTransaction(async (tx: CommunityUnitOfWork) => {
-    // 1. Validate actor is ACTIVE ADMIN of this community
-    const actorMember = await tx.findActiveAdminMember(
+    // 1. Validate actor can create invitation (community ACTIVE + actor ADMIN)
+    await ensureCanCreateInvitation({
+      client: tx,
+      actor: input.actor,
       communityId,
-      input.actor.id,
-    );
-    if (!actorMember) {
-      throw new CommunityAuthorizationError(
-        "Only an ACTIVE ADMIN can create invitations",
-      );
-    }
+    });
 
-    // 2. Validate community exists and is ACTIVE
-    const community = await tx.findCommunityById(communityId);
-    if (!community) {
-      throw new CommunityNotFoundError("Community not found");
-    }
-    if (community.status !== CommunityStatus.ACTIVE) {
-      throw new CommunityInvariantError("Community is not active");
-    }
-
-    // 3. Generate code and hash
+    // 2. Generate code and hash
     const plainCode = generateInviteCode();
     const codeHash = hashInviteCode(plainCode);
     const expiresAt = null; // MVP: no expiry by default
 
-    // 4. Persist invitation
+    // 3. Persist invitation
     const invitation = await tx.createCommunityInvitation({
       communityId,
       codeHash,
@@ -89,7 +75,7 @@ export async function createCommunityInvitation(
       expiresAt,
     });
 
-    // 5. Audit
+    // 4. Audit
     await tx.createAuditLog({
       communityId,
       actorId: input.actor.id,

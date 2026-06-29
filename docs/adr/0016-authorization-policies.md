@@ -119,6 +119,8 @@ export async function ensureCanReviewCamera(args: {
 }): Promise<{ camera: CameraRecord }>;
 ```
 
+**Nota:** El patrón preferido es `MembershipLookupsPort & Pick<X, "method">` (ver `ensureCanSetPermission`). El tipo `client: CommunityUnitOfWork` directo se usa solo cuando la policy necesita múltiples métodos del UoW que no encajan en un Pick único (ver `ensureCanApproveMember`, `ensureCanRejectMember`).
+
 **Por qué `client: <UoW intersected with port>`**: las policies necesitan `findCommunityById` (port) y `findCameraById` (repository). El intersection con `Pick<>` evita crear un nuevo `PolicyContextPort` ceremonioso y mantiene el patrón actual donde services llaman `tx.foo(...)`.
 
 **Helper genérico para reducir verbosidad**:
@@ -180,6 +182,7 @@ NO se mueve:
 
 - **Validaciones de input técnico** (UUID, MIME type, HH:MM, RTSP URL format, file size, `isWithinSchedule`, range > 30min) → siguen como `CommunityInvariantError` **inline** ANTES de la policy.
 - **Invariantes de estado del recurso** (camera PENDING/REJECTED, incident OPEN/CLOSED, permission uniqueness) → siguen inline. NO son policy de actor.
+- **Nota:** Los invariantes de estado **acoplados a la operación** (mensajes que llevan el verbo de la operación, ej. *"Camera must be ACTIVE to remove permissions"*, *"Community is not active; recording requests are disabled"*) **sí son scope de la policy**, no inline. La policy ya encapsula la operación; cuando el mensaje tiene un verbo operacional, preservarlo dentro de la policy mantiene locality del contrato UX sin sacrificar el orden de checks de R8. El helper genérico `ensureActiveCommunity()` aplica solo a policies donde el wording genérico es aceptable.
 - **`request-community-membership.ts`**: política de "claim-by-code", no de "actor role". Inline con comentario `// no extraer: claim-by-code, no es policy de actor`.
 - **`findSectorById` cross-community check** (sector pertenece a la comunidad del incidente): invariante de entidad, no policy.
 
@@ -350,6 +353,24 @@ NO requeridos. Adapter cubierto en sus tests; services cubiertos indirectamente 
 | "Only an ACTIVE ADMIN can approve members" | `membership/ensure-can-approve-member.ts` |
 | "Only an ACTIVE ADMIN can reject members" | `membership/ensure-can-reject-member.ts` |
 | "Only an ACTIVE ADMIN can create invitations" | `membership/ensure-can-create-invitation.ts` |
+
+### Invariantes de estado con verbo operacional (dentro de policy)
+
+| Mensaje canónico | Policy destino |
+|---|---|
+| "Camera must be ACTIVE to configure permissions" | `camera/ensure-can-set-permission.ts` |
+| "Camera must be ACTIVE to remove permissions" | `camera/ensure-can-remove-permission.ts` |
+| "Community is not active; recording requests are disabled" | `recording-request/ensure-can-request-recording.ts` |
+
+### Invariantes de estado genéricas (sin verbo, compartidas vía helper)
+
+| Mensaje canónico | Helper/policy destino |
+|---|---|
+| "Community is not active" | `_helpers.ts: ensureActiveCommunity()` (11 policies lo usan) |
+| "Camera is not active" | `recording-request/ensure-can-request-recording.ts` (genérico OK) |
+| "Camera is not available for live viewing" | `camera/ensure-active-member-with-live-access.ts` (wording ya específico) |
+| "Camera is not pending review" | `camera/ensure-can-review-camera.ts` |
+| "Cannot request recordings for a closed incident" | `recording-request/ensure-can-request-recording.ts` |
 
 ## References
 
