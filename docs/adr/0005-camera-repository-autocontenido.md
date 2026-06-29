@@ -39,3 +39,7 @@ El `runInTransaction` de CameraRepository crea un UnitOfWork que tiene todos los
 
 `src/domain/community/camera/camera-repository.ts` — interfaz con métodos de cámara y de lookup comunitario.
 `src/infrastructure/prisma/camera-repository.ts` — implementación Prisma que crea ambos en un solo UnitOfWork.
+
+## Notas posteriores
+
+**2026-06-29 — ADR-0015 (`MembershipLookupsPort seam`)** revoca parcialmente este ADR. La duplicación de lookups comunitarios ya no se considera trade-off aceptado — vive en `MembershipLookupsPort` + `PrismaMembershipLookupsAdapter`. La auto-contención del repo (un servicio recibe un solo repo, `runInTransaction` simple) se preserva vía extensión del port en cada interface de UoW. Ver ADR-0015 §Supersedes para detalles.
