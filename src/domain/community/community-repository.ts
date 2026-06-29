@@ -4,6 +4,7 @@ import {
   CommunityMemberStatus,
   CommunityStatus,
 } from "@/generated/prisma/enums";
+import type { MembershipLookupsPort } from "@/domain/community/membership/membership-lookups";
 
 // ---------------------------------------------------------------------------
 // Record types returned by repository methods
@@ -69,12 +70,7 @@ export type CreateAuditLogInput = {
 // Unit of work (scoped inside a transaction)
 // ---------------------------------------------------------------------------
 
-export interface CommunityUnitOfWork {
-  findCommunityById(id: string): Promise<CommunityRecord | null>;
-  findActiveAdminMember(
-    communityId: string,
-    userId: string,
-  ): Promise<CommunityMemberRecord | null>;
+export interface CommunityUnitOfWork extends MembershipLookupsPort {
   findCommunityMemberByUserId(
     userId: string,
   ): Promise<CommunityMemberRecord | null>;

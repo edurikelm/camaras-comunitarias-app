@@ -26,6 +26,10 @@ function createRepository(
       status: CommunityStatus.ACTIVE,
     })),
     findActiveAdminMember: vi.fn(),
+    findActiveNeighborOrGuardMember: vi.fn(),
+    findActiveMember: vi.fn(),
+    findActiveAdminOrGuardMember: vi.fn(),
+    findSectorById: vi.fn(),
     findCommunityMemberByUserId: vi.fn(async () => null),
     findCommunityMemberById: vi.fn(),
     findInvitationByCodeHash: vi.fn(async (codeHash) => {

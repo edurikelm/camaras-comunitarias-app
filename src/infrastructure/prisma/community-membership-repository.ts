@@ -3,9 +3,9 @@ import type {
   CommunityMembershipRepository,
   CommunityUnitOfWork,
 } from "@/domain/community/community-repository";
-import { CommunityMemberRole, CommunityMemberStatus } from "@/generated/prisma/enums";
 import { createTransactionalRepository } from "@/infrastructure/prisma/_internal/create-transactional-repository";
 import type { AuditLogPort } from "@/domain/shared/audit-log";
+import { createPrismaMembershipLookupsAdapter } from "@/infrastructure/prisma/membership-lookups-adapter";
 
 /**
  * Prisma-backed CommunityMembershipRepository.
@@ -19,27 +19,10 @@ export function createPrismaCommunityMembershipRepository(
   const { auditLog } = deps;
 
   function createUnitOfWork(tx: Prisma.TransactionClient): CommunityUnitOfWork {
-    return {
-      async findCommunityById(id) {
-        const record = await tx.community.findUnique({
-          where: { id },
-          select: { id: true, name: true, status: true },
-        });
-        return record;
-      },
+    const membershipLookups = createPrismaMembershipLookupsAdapter(tx);
 
-      async findActiveAdminMember(communityId, userId) {
-        const record = await tx.communityMember.findFirst({
-          where: {
-            userId,
-            communityId,
-            role: CommunityMemberRole.ADMIN,
-            status: CommunityMemberStatus.ACTIVE,
-          },
-          select: { id: true, userId: true, communityId: true, role: true, status: true },
-        });
-        return record;
-      },
+    return {
+      ...membershipLookups,
 
       async findCommunityMemberByUserId(userId) {
         const record = await tx.communityMember.findUnique({

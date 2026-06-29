@@ -29,6 +29,10 @@ function createRepository(
       role: CommunityMemberRole.ADMIN,
       status: CommunityMemberStatus.ACTIVE,
     })),
+    findActiveNeighborOrGuardMember: vi.fn(),
+    findActiveMember: vi.fn(),
+    findActiveAdminOrGuardMember: vi.fn(),
+    findSectorById: vi.fn(),
     findCommunityMemberByUserId: vi.fn(),
     findCommunityMemberById: vi.fn(async (id) => {
       if (id === "member-pending-1") {

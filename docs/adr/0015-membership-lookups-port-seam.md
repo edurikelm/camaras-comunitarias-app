@@ -133,7 +133,7 @@ function createUnitOfWork(
 
 ### 4. Extension del UoW interface (cambio clave)
 
-Cada interface de UoW extiende `MembershipLookupsPort` y elimina las declaraciones redundantes de los 6 lookups. Los mocks de tests existentes (que ya implementan `findCommunityById: vi.fn(...)` etc.) satisfacen el port automaticamente via structural typing.
+Cada interface de UoW extiende `MembershipLookupsPort` y elimina las declaraciones redundantes de los 6 lookups. Los mocks de tests existentes que mockean `findCommunityById` y `findActiveAdminMember` ya implementan esos 2 metodos, pero como `MembershipLookupsPort` declara 6 metodos, TypeScript strict mode exige que **cada mock helper presente stubs `vi.fn()` para los 4 metodos restantes del port** (`findActiveNeighborOrGuardMember`, `findActiveMember`, `findActiveAdminOrGuardMember`, `findSectorById`). Los stubs son solo presencia estructural — sin logica, porque los tests reales no los invocan. Confirmado durante PR #1 (commit TBD): 4 archivos de test afectados (`approve-community-member.test.ts`, `reject-community-member.test.ts`, `request-community-membership.test.ts`, `create-community-invitation.test.ts`).
 
 ```ts
 // ANTES
@@ -248,7 +248,7 @@ Mirror de `audit-log-adapter.test.ts`. ~7-8 tests:
 
 ### Tests de regresion
 
-Mantener todos los tests existentes sin cambios. Los mocks actuales satisfacen `MembershipLookupsPort` automaticamente.
+Mantener la logica de todos los tests existentes sin cambios. Los mocks que satisfacen `MembershipLookupsPort` necesitan agregar 4 stubs `vi.fn()` por helper (uno por cada uno de los metodos del port que el test no mockea explicitamente): `findActiveNeighborOrGuardMember`, `findActiveMember`, `findActiveAdminOrGuardMember`, `findSectorById`. Ver §4 (Extension del UoW interface) para el ejemplo completo aplicado en PR #1.
 
 ### Tests de integracion
 
