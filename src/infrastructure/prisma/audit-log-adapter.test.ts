@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createPrismaAuditLogAdapter } from "./audit-log-adapter";
-import type { PrismaClient } from "@/generated/prisma/client";
+import { PrismaClient } from "@/generated/prisma/client";
 
 // Minimal mock of Prisma's auditLog namespace
 function mockTxClient() {
@@ -137,15 +137,39 @@ describe("PrismaAuditLogAdapter", () => {
       });
       expect(txClient._create).toHaveBeenCalledOnce();
     });
+  });
 
-    it("does not warn when constructed with a transaction client", () => {
+  describe("top-level client detection (instanceof PrismaClient)", () => {
+    // Mismo rationale que en membership-lookups-adapter: el check
+    // `"$transaction" in client` daba falsos positivos porque el tx proxy
+    // de Prisma 5.x expone `$transaction` en su cadena de prototipos.
+    // Reemplazamos por `client instanceof PrismaClient`.
+
+    it("does not warn when given a transaction client (mock sin prototype de PrismaClient)", () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      // Transaction clients do not have $transaction
       const txOnlyClient = {
         auditLog: { create: vi.fn<() => Promise<unknown>>() },
       };
       createPrismaAuditLogAdapter(txOnlyClient as unknown as PrismaClient);
       expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it("warns when given a real top-level PrismaClient instance (Object.setPrototypeOf)", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const topLevelLike = {
+        auditLog: { create: vi.fn<() => Promise<unknown>>() },
+      };
+      Object.setPrototypeOf(topLevelLike, PrismaClient.prototype);
+
+      createPrismaAuditLogAdapter(topLevelLike as unknown as PrismaClient);
+
+      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "[PrismaAuditLogAdapter] Created with top-level PrismaClient",
+        ),
+      );
       warnSpy.mockRestore();
     });
   });

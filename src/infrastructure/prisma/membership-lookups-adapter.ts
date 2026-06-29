@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import { PrismaClient, type Prisma } from "@/generated/prisma/client";
 import type { MembershipLookupsPort } from "@/domain/community/membership/membership-lookups";
 
 /**
@@ -7,14 +7,26 @@ import type { MembershipLookupsPort } from "@/domain/community/membership/member
  * transaction (via the factory below) so that membership lookups always read
  * from the correct transaction boundary.
  *
- * We distinguish top-level vs transactional by checking for the presence of
- * `$transaction` — a method that only exists on `PrismaClient`, never on
- * `Prisma.TransactionClient`.
+ * We distinguish top-level vs transactional using `instanceof PrismaClient`.
+ *
+ * Why `instanceof` and not `"$transaction" in client`:
+ *   Prisma 5.x's transaction proxy (the `tx` passed to
+ *   `prisma.$transaction(async (tx) => ...)`) exposes `$transaction` on its
+ *   prototype chain at runtime, even though the `TransactionClient` type
+ *   derives from `Omit<PrismaClient, ITXClientDenyList>` and therefore
+ *   declares `$transaction` as absent.  The `in` operator checks own +
+ *   prototype properties, so it produced false positives for legitimate
+ *   transactional scopes — every `createPrismaMembershipLookupsAdapter(tx)`
+ *   call inside an enclosing `prisma.$transaction` logged a spurious warning.
+ *
+ *   `instanceof PrismaClient` answers the actual question we care about
+ *   ("is this the top-level client, not a tx proxy?") and does not depend
+ *   on which methods Prisma happens to deny-list in any given version.
  */
 function isTopLevelClient(
   client: PrismaClient | Prisma.TransactionClient,
 ): client is PrismaClient {
-  return "$transaction" in client;
+  return client instanceof PrismaClient;
 }
 
 /**

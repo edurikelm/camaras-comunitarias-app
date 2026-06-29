@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createPrismaMembershipLookupsAdapter } from "./membership-lookups-adapter";
 import type { MembershipLookupsPort } from "@/domain/community/membership/membership-lookups";
-import type { PrismaClient } from "@/generated/prisma/client";
+import { PrismaClient } from "@/generated/prisma/client";
 
 // Minimal mock of the Prisma namespaces used by the adapter
 function mockTxClient() {
@@ -249,10 +249,28 @@ describe("PrismaMembershipLookupsAdapter", () => {
       });
       expect(txClient._communityFindUnique).toHaveBeenCalledOnce();
     });
+  });
 
-    it("does not warn when constructed with a transaction client", () => {
+  describe("top-level client detection (instanceof PrismaClient)", () => {
+    // Background: el adapter está pensado para ser creado una vez por tx
+    // (vía el factory) para que las lecturas siempre vean la transacción
+    // envolvente. Un check en el factory detecta si por error se está
+    // pasando el cliente top-level y avisa al desarrollador.
+    //
+    // Una versión anterior usaba `"$transaction" in client`, lo que daba
+    // falsos positivos: el tx proxy de Prisma 5.x expone `$transaction` en
+    // su cadena de prototipos aunque los types digan que no, y el operador
+    // `in` chequea own + prototype. Resultado: el warning se disparaba para
+    // CADA adapter creado dentro de un `prisma.$transaction` legítimo.
+    //
+    // El check correcto es `client instanceof PrismaClient`: pregunta
+    // directo "¿es la clase top-level?" y es robusto a cambios en la
+    // deny-list de Prisma entre versiones.
+
+    it("does not warn when given a transaction client (mock sin prototype de PrismaClient)", () => {
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-      // Transaction clients do not have $transaction
+      // Un tx proxy real no es instancia de PrismaClient (es un Proxy
+      // separado). El mock plano simula ese caso.
       const txOnlyClient = {
         community: { findUnique: vi.fn<() => Promise<unknown>>() },
         communityMember: { findFirst: vi.fn<() => Promise<unknown>>() },
@@ -262,6 +280,31 @@ describe("PrismaMembershipLookupsAdapter", () => {
         txOnlyClient as unknown as PrismaClient,
       );
       expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it("warns when given a real top-level PrismaClient instance (Object.setPrototypeOf)", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      // Simulamos una instancia top-level sin abrir conexión real:
+      // cambiamos el prototype del mock al PrismaClient.prototype. El
+      // operador `instanceof` ve el prototype y devuelve true.
+      const topLevelLike = {
+        community: { findUnique: vi.fn<() => Promise<unknown>>() },
+        communityMember: { findFirst: vi.fn<() => Promise<unknown>>() },
+        communitySector: { findUnique: vi.fn<() => Promise<unknown>>() },
+      };
+      Object.setPrototypeOf(topLevelLike, PrismaClient.prototype);
+
+      createPrismaMembershipLookupsAdapter(
+        topLevelLike as unknown as PrismaClient,
+      );
+
+      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "[PrismaMembershipLookupsAdapter] Created with top-level PrismaClient",
+        ),
+      );
       warnSpy.mockRestore();
     });
   });
