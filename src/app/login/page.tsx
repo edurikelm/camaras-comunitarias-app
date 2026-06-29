@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSupabase } from "@/components/providers/supabase-provider";
+import { mapSupabaseAuthError } from "@/lib/api/supabase-auth-error-mapper";
 
 export default function LoginPage() {
   const supabase = useSupabase();
@@ -40,7 +41,7 @@ export default function LoginPage() {
         });
 
       if (signInError) {
-        setError(signInError.message);
+        setError(mapSupabaseAuthError(signInError));
         setLoading(false);
         return;
       }

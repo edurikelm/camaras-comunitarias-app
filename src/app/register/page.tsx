@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSupabase } from "@/components/providers/supabase-provider";
+import { mapSupabaseAuthError } from "@/lib/api/supabase-auth-error-mapper";
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -69,7 +70,7 @@ export default function RegisterPage() {
         });
 
       if (signUpError) {
-        setError(signUpError.message);
+        setError(mapSupabaseAuthError(signUpError));
         setLoading(false);
         return;
       }
