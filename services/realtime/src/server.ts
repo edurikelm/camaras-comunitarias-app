@@ -1,19 +1,26 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { Server as SocketIOServer } from "socket.io";
+import dotenv from "dotenv";
+import { fileURLToPath } from "node:url";
+import { PrismaPg } from "@prisma/adapter-pg";
+// El cliente Prisma generado vive en `src/generated/prisma/client.ts` del root
+// (custom output de prisma generate; ver prisma.config.ts). Importamos con
+// extension .ts porque tsx (runtime de dev) lo resuelve; tsc marca error de
+// "cannot find module" porque no soporta imports de .ts sin allowImportingTsExtensions.
+// En produccion compilado a .js se ajustaria este path (o se usa un build step).
+// @ts-expect-error TS no resuelve .ts en imports cross-project
+import { PrismaClient } from "../../../src/generated/prisma/client.ts";
 import { loadConfig, type Config } from "./config.js";
 import { createLogger, type Logger } from "./logger.js";
 import { registerHealthRoutes } from "./health.js";
 
-// PrismaClient se importa via require() dinamico para evitar problemas de
-// resolucion de modulos con paths que cruzan directorios (el cliente
-// generado vive en el root src/generated/prisma/).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type PrismaLike = { $queryRaw: (strings: TemplateStringsArray, ...args: unknown[]) => Promise<unknown>; $disconnect: () => Promise<void> };
-type PrismaClientConstructor = new (opts: { datasources: { db: { url: string } } }) => PrismaLike;
-
-function createPrismaClient(url: string, PrismaClient: PrismaClientConstructor): PrismaLike {
-  return new PrismaClient({ datasources: { db: { url } } });
+// Cargar variables de entorno desde .env antes que nada.
+// Node NO carga .env automaticamente (eso lo hace Next.js via dotenv por nosotros).
+// En produccion (NODE_ENV=production) no se carga .env — se espera que las variables
+// esten provistas por el entorno (docker, k8s, systemd, etc.).
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config();
 }
 
 export type Server = {
@@ -36,6 +43,10 @@ export type CreateServerOptions = {
  * - CORS para el handshake de Socket.IO
  * - Rutas de health check (/healthz, /readyz)
  * - Socket.IO (sin auth ni handlers en PR #0 — eso viene en PR #1 y PR #2)
+ *
+ * El cliente Prisma se importa desde `src/generated/prisma/client.ts` del root.
+ * La extension .ts funciona con tsx (runtime de dev). En produccion compilado a
+ * .js se ajustaria este path (o se usa un build step).
  */
 export function createServer(options: CreateServerOptions = {}): Server {
   const config = options.config ?? loadConfig();
@@ -52,10 +63,11 @@ export function createServer(options: CreateServerOptions = {}): Server {
     credentials: true,
   });
 
-  // Prisma client — se crea lazy para permitir tests sin DB real
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { PrismaClient } = require("../../src/generated/prisma/client.js") as { PrismaClient: PrismaClientConstructor };
-  const prisma = createPrismaClient(config.DATABASE_URL, PrismaClient);
+  // Prisma client (Prisma 7.x usa driver adapters; ver src/lib/prisma.ts del root).
+  // La conexion se configura via PrismaPg adapter con la DATABASE_URL.
+  const prisma = new PrismaClient({
+    adapter: new PrismaPg({ connectionString: config.DATABASE_URL }),
+  });
 
   // Rutas de health check
   registerHealthRoutes(app, prisma);
@@ -85,8 +97,12 @@ export function createServer(options: CreateServerOptions = {}): Server {
   };
 }
 
-// Entry point cuando se ejecuta directamente con `tsx src/server.ts`
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+// Entry point cuando se ejecuta directamente con `tsx src/server.ts`.
+// Usamos `fileURLToPath` para normalizar el path de import.meta.url a la
+// representacion nativa del OS antes de comparar (en Windows, import.meta.url
+// usa `/` mientras que process.argv[1] usa `\`, por lo que una comparacion
+// directa de strings siempre falla).
+const isMainModule = process.argv[1] === fileURLToPath(import.meta.url);
 if (isMainModule) {
   const server = createServer();
   server.start().catch((err) => {
