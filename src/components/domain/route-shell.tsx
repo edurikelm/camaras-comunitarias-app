@@ -38,7 +38,17 @@ export function RouteShell({
   activeHref,
   children,
   action,
+  viewerRole,
 }: RouteShellProps) {
+  // Filtrar "Plataforma" para usuarios que no son PLATFORM_ADMIN.
+  // Si viewerRole es undefined, se mantienen todas las secciones (compatibilidad).
+  const visibleNavItems = navigationItems.filter((item) => {
+    if (item.href === "/platform") {
+      return viewerRole === undefined || viewerRole === "PLATFORM_ADMIN";
+    }
+    return true;
+  });
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-6 py-6 lg:px-8">
@@ -64,7 +74,7 @@ export function RouteShell({
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <nav aria-label="Secciones principales" className="flex flex-wrap gap-2">
-              {navigationItems.map((item) => (
+              {visibleNavItems.map((item) => (
                 <Button
                   key={item.href}
                   asChild
