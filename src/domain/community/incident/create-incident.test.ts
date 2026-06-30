@@ -9,7 +9,6 @@ import {
   CommunityStatus,
 } from "@/generated/prisma/enums";
 import {
-  CommunityAuthorizationError,
   CommunityInvariantError,
 } from "@/domain/community/errors";
 import { createIncident } from "./create-incident";
@@ -28,15 +27,15 @@ function createRepository(
       name: "Barrio Norte",
       status: CommunityStatus.ACTIVE,
     })),
-    findActiveNeighborOrGuardMember: vi.fn(async () => ({
+    findActiveMember: vi.fn(async () => ({
       id: "member-1",
       userId: "user-1",
       communityId: "community-1",
       role: CommunityMemberRole.NEIGHBOR,
       status: CommunityMemberStatus.ACTIVE,
     })),
+    findActiveNeighborOrGuardMember: vi.fn(),
     findActiveAdminMember: vi.fn(),
-    findActiveMember: vi.fn(),
     findActiveAdminOrGuardMember: vi.fn(),
     findSectorById: vi.fn(),
     createIncident: vi.fn(async (input) => ({
@@ -133,7 +132,7 @@ describe("createIncident", () => {
 
   it("GUARD crea incidente correctamente", async () => {
     const repository = createRepository({
-      findActiveNeighborOrGuardMember: vi.fn(async () => ({
+      findActiveMember: vi.fn(async () => ({
         id: "member-2",
         userId: "user-guard",
         communityId: "community-1",
@@ -158,38 +157,45 @@ describe("createIncident", () => {
 
   it("rechaza actor que no es miembro activo", async () => {
     const repository = createRepository({
-      findActiveNeighborOrGuardMember: vi.fn(async () => null),
+      findActiveMember: vi.fn(async () => null),
     });
 
     await expect(
       createIncident(validInput, { incidentRepository: repository }),
     ).rejects.toThrow(
-      "Only an ACTIVE NEIGHBOR or GUARD can create an incident",
+      "Only an ACTIVE community member can create an incident",
     );
 
     expect(repository.createIncident).not.toHaveBeenCalled();
     expect(repository.createAuditLog).not.toHaveBeenCalled();
   });
 
-  it("rechaza ADMIN como creador de incidente", async () => {
+  it("ADMIN crea incidente correctamente (ADMIN incluye capacidades de NEIGHBOR)", async () => {
     const repository = createRepository({
-      findActiveNeighborOrGuardMember: vi.fn(async () => null),
+      findActiveMember: vi.fn(async () => ({
+        id: "member-admin",
+        userId: "admin-user",
+        communityId: "community-1",
+        role: CommunityMemberRole.ADMIN,
+        status: CommunityMemberStatus.ACTIVE,
+      })),
     });
 
-    await expect(
-      createIncident(
-        { ...validInput, actor: { id: "admin-user" } },
-        { incidentRepository: repository },
-      ),
-    ).rejects.toThrow(CommunityAuthorizationError);
+    const result = await createIncident(
+      { ...validInput, actor: { id: "admin-user" } },
+      { incidentRepository: repository },
+    );
 
-    expect(repository.createIncident).not.toHaveBeenCalled();
-    expect(repository.createAuditLog).not.toHaveBeenCalled();
+    expect(result.incident).toMatchObject({
+      communityId: "community-1",
+      type: IncidentType.THEFT,
+    });
+    expect(repository.createIncident).toHaveBeenCalled();
   });
 
   it("rechaza miembro BLOCKED", async () => {
     const repository = createRepository({
-      findActiveNeighborOrGuardMember: vi.fn(async () => null),
+      findActiveMember: vi.fn(async () => null),
     });
 
     await expect(
@@ -197,7 +203,7 @@ describe("createIncident", () => {
         { ...validInput, actor: { id: "blocked-user" } },
         { incidentRepository: repository },
       ),
-    ).rejects.toThrow("Only an ACTIVE NEIGHBOR or GUARD can create an incident");
+    ).rejects.toThrow("Only an ACTIVE community member can create an incident");
 
     expect(repository.createIncident).not.toHaveBeenCalled();
     expect(repository.createAuditLog).not.toHaveBeenCalled();

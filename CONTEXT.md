@@ -115,7 +115,7 @@ Actualiza este documento cuando una regla durable cambie o se descubra durante e
 ## Incident and Alert Rules
 
 - Un incidente se crea junto con su alerta en la misma transaccion: createIncident persiste Incident + Alert.
-- Pueden crear incidentes: miembros ACTIVE con rol NEIGHBOR o GUARD.
+- Pueden crear incidentes: miembros ACTIVE de la comunidad en cualquier rol (NEIGHBOR, GUARD o ADMIN). Esto refleja la regla general de que ADMIN incluye las capacidades base de NEIGHBOR.
 - El creador del incidente no necesita tener permisos de camara.
 - Sector es opcional en el incidente; si no se especifica, la alerta se enva segun la regla de sin sector aplicable.
 - La severidad inicial se sugiere automaticamente por tipo de incidente.

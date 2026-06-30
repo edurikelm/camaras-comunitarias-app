@@ -785,24 +785,35 @@ describe("ensureActiveMemberWithLiveAccess", () => {
 // ---------------------------------------------------------------------------
 
 describe("ensureCanCreateIncident", () => {
-  it("throws CommunityAuthorizationError when actor is not NEIGHBOR or GUARD", async () => {
+  it("throws CommunityAuthorizationError when actor is not an ACTIVE member", async () => {
     const client = createMembershipPort({
-      findActiveNeighborOrGuardMember: vi.fn(async () => null),
+      findActiveMember: vi.fn(async () => null),
     });
     await expect(
       ensureCanCreateIncident({
         client,
-        actor: { id: "user-admin-1" },
+        actor: { id: "user-unknown" },
         communityId: "community-1",
       }),
     ).rejects.toThrow(CommunityAuthorizationError);
     await expect(
       ensureCanCreateIncident({
         client,
-        actor: { id: "user-admin-1" },
+        actor: { id: "user-unknown" },
         communityId: "community-1",
       }),
-    ).rejects.toThrow("Only an ACTIVE NEIGHBOR or GUARD can create an incident");
+    ).rejects.toThrow("Only an ACTIVE community member can create an incident");
+  });
+
+  it("passes when actor is ACTIVE NEIGHBOR", async () => {
+    const client = createMembershipPort();
+    await expect(
+      ensureCanCreateIncident({
+        client,
+        actor: { id: "user-neighbor-1" },
+        communityId: "community-1",
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it("passes when actor is ACTIVE GUARD", async () => {
@@ -811,6 +822,17 @@ describe("ensureCanCreateIncident", () => {
       ensureCanCreateIncident({
         client,
         actor: { id: "user-guard-1" },
+        communityId: "community-1",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("passes when actor is ACTIVE ADMIN (ADMIN incluye capacidades de NEIGHBOR)", async () => {
+    const client = createMembershipPort();
+    await expect(
+      ensureCanCreateIncident({
+        client,
+        actor: { id: "user-admin-1" },
         communityId: "community-1",
       }),
     ).resolves.toBeUndefined();
