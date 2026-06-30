@@ -14,6 +14,8 @@ import { PrismaClient } from "../../../src/generated/prisma/client.ts";
 import { loadConfig, type Config } from "./config.js";
 import { createLogger, type Logger } from "./logger.js";
 import { registerHealthRoutes } from "./health.js";
+import { createPrismaUserLookup } from "./infrastructure/prisma-user-lookup.js";
+import { registerSocketAuth } from "./auth/socket-auth.js";
 
 // Cargar variables de entorno desde .env antes que nada.
 // Node NO carga .env automaticamente (eso lo hace Next.js via dotenv por nosotros).
@@ -75,6 +77,15 @@ export function createServer(options: CreateServerOptions = {}): Server {
   // Socket.IO (sin auth ni handlers — PR #1 y PR #2)
   const io = new SocketIOServer(app.server, {
     cors: { origin: config.CORS_ORIGIN, credentials: true },
+  });
+
+  // PR #1: autenticacion JWT en el handshake Socket.IO
+  registerSocketAuth(io, {
+    jwksUrl: `${config.SUPABASE_URL}/auth/v1/.well-known/jwks.json`,
+    jwtAudience: config.SUPABASE_JWT_AUDIENCE,
+    jwtIssuer: config.SUPABASE_URL,
+    users: createPrismaUserLookup(prisma),
+    logger,
   });
 
   let started = false;

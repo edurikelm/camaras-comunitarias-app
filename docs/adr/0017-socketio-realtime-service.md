@@ -227,7 +227,9 @@ export function registerSocketAuth(io: Server) {
 const supabaseUserId = socket.data.supabaseUserId as string;
 const user = await prisma.user.findUnique({
   where: { authProviderId: supabaseUserId },
-  select: { id: true, email: true },
+  // NOTA (PR #1): solo `id` se selecciona. `email` es PII y NO debe exponerse
+  // en `socket.data` ni en logs (ver seccion h abajo, observabilidad minima).
+  select: { id: true },
 });
 if (!user) return next(new Error("User not found in app DB"));
 socket.data.userId = user.id;       // ahora la clave de dominio
@@ -609,7 +611,7 @@ export async function connectRealtime(): Promise<Socket> {
 
 - **Logging estructurado con `pino`** (built-in de Fastify). Cada log incluye: `timestamp`, `level`, `service: "realtime"`, `traceId` (cuando aplique), `userId` (cuando aplique, NO communityId ni emails).
 - **Eventos logueados** (sin PII):
-  - `auth.success` con `{ userId, communityIds }`
+  - `auth.success` con `{ userId }` (PR #1) — `communityIds` se agrega en PR #2 cuando el usuario hace `socket.join(communityRoom)`. Ver PR #1 implementation: el middleware actual solo popula `userId` y `supabaseUserId`; todavia no hay conexion con rooms.
   - `auth.rejected` con `{ reason }` (sin el token, sin el email)
   - `connection.established` con `{ userId }`
   - `connection.closed` con `{ userId, reason }`
