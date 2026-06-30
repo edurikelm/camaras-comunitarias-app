@@ -45,13 +45,14 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
+  /** true cuando signUp succeeded pero requiere confirmación de email (session === null) */
+  const [emailConfirmation, setEmailConfirmation] = useState(false);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       setError(null);
-      setSuccess(false);
+      setEmailConfirmation(false);
       setLoading(true);
 
       // 0. Validate inputs before any side-effect
@@ -91,22 +92,28 @@ export default function RegisterPage() {
         });
 
         if (!response.ok) {
+          // Edge case: signUp succeeded in Supabase Auth but local DB record failed.
+          // The auth account exists; we surface a clear message rather than masking the partial state.
           const body = await response.json();
           setError(
-            body.error || "Error al crear el perfil. Intentalo de nuevo.",
+            body.error ||
+              "Tu cuenta fue creada en Supabase pero hubo un error creando tu perfil local. Contactá soporte.",
           );
           setLoading(false);
           return;
         }
 
-        setSuccess(true);
-        setLoading(false);
-
-        // Redirect to login after a brief moment so the user sees the success message
-        setTimeout(() => {
-          router.push("/login");
+        // 3a. Auto-confirm enabled in Supabase → session already active → dispatch to auth dispatcher
+        if (signUpData.session) {
+          setLoading(false);
+          router.push("/");
           router.refresh();
-        }, 2000);
+          return;
+        }
+
+        // 3b. Email confirmation required → stay on page with clear next-step messaging
+        setEmailConfirmation(true);
+        setLoading(false);
       } catch {
         setError("Error de conexión. Intentalo de nuevo.");
         setLoading(false);
@@ -133,12 +140,12 @@ export default function RegisterPage() {
               </Alert>
             )}
 
-            {success && (
+            {emailConfirmation && (
               <Alert variant="default">
                 <CheckCircleIcon className="text-green-600" />
                 <AlertDescription>
-                  Cuenta creada correctamente. Redirigiendo al inicio de
-                  sesión…
+                  Cuenta creada correctamente. Revisá tu casilla y confirmá el
+                  correo para activar la cuenta.
                 </AlertDescription>
               </Alert>
             )}
@@ -183,7 +190,7 @@ export default function RegisterPage() {
               />
             </div>
 
-            <Button type="submit" disabled={loading || success}>
+            <Button type="submit" disabled={loading || emailConfirmation}>
               {loading && <Loader2Icon className="animate-spin" />}
               {loading ? "Creando cuenta…" : "Crear cuenta"}
             </Button>
