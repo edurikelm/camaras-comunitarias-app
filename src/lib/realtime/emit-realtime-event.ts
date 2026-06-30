@@ -61,6 +61,61 @@ const EmitPayloadSchema = z.discriminatedUnion("type", [
       createdAt: z.string(),
     }),
   }),
+  // community-member.status-changed
+  z.object({
+    type: z.literal("community-member.status-changed"),
+    communityId: z.string(),
+    audience: z.object({
+      roomKeys: z.array(z.string()),
+      userIds: z.array(z.string()),
+    }),
+    payload: z.object({
+      userId: z.string().uuid(),
+      communityId: z.string().uuid(),
+      previousStatus: z.enum(["PENDING", "ACTIVE", "BLOCKED"]),
+      newStatus: z.enum(["PENDING", "ACTIVE", "BLOCKED"]),
+      changedById: z.string().uuid(),
+      changedAt: z.string(),
+    }),
+  }),
+  // recording-request.created
+  z.object({
+    type: z.literal("recording-request.created"),
+    communityId: z.string(),
+    audience: z.object({
+      roomKeys: z.array(z.string()),
+      userIds: z.array(z.string()),
+    }),
+    payload: z.object({
+      requestId: z.string().uuid(),
+      incidentId: z.string().uuid(),
+      cameraId: z.string().uuid(),
+      ownerId: z.string().uuid(),
+      requesterId: z.string().uuid(),
+      communityId: z.string().uuid(),
+      startTime: z.string(),
+      endTime: z.string(),
+      createdAt: z.string(),
+    }),
+  }),
+  // recording-request.responded
+  z.object({
+    type: z.literal("recording-request.responded"),
+    communityId: z.string(),
+    audience: z.object({
+      roomKeys: z.array(z.string()),
+      userIds: z.array(z.string()),
+    }),
+    payload: z.object({
+      requestId: z.string().uuid(),
+      cameraId: z.string().uuid(),
+      requesterId: z.string().uuid(),
+      communityId: z.string().uuid(),
+      status: z.enum(["PENDING", "ACCEPTED", "REJECTED"]),
+      responseComment: z.string().nullable(),
+      respondedAt: z.string(),
+    }),
+  }),
 ]);
 
 export type EmitInput = z.infer<typeof EmitPayloadSchema>;

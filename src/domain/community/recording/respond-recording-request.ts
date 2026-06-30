@@ -5,6 +5,7 @@ import {
 } from "@/domain/community/errors";
 import type { RecordingRequestRepository } from "./recording-request-repository";
 import { ensureCanRespondRecording } from "@/domain/community/policies";
+import { emitRealtimeEvent } from "@/lib/realtime/emit-realtime-event";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -35,6 +36,7 @@ export type RespondRecordingRequestResult = {
 
 export type RespondRecordingRequestDeps = {
   recordingRequestRepository: RecordingRequestRepository;
+  emitRealtimeEvent?: typeof emitRealtimeEvent;
 };
 
 // ---------------------------------------------------------------------------
@@ -43,14 +45,20 @@ export type RespondRecordingRequestDeps = {
 
 export async function respondRecordingRequest(
   input: RespondRecordingRequestInput,
-  { recordingRequestRepository }: RespondRecordingRequestDeps,
+  { recordingRequestRepository, emitRealtimeEvent: emitFn }: RespondRecordingRequestDeps,
 ): Promise<RespondRecordingRequestResult> {
   const requestId = input.recordingRequestId.trim();
   if (!requestId) {
     throw new CommunityInvariantError("recordingRequestId is required");
   }
 
-  return recordingRequestRepository.runInTransaction(async (tx) => {
+  // Capture requesterId, communityId, and cameraId before the transaction returns
+  let requesterId: string = "";
+  let communityId: string = "";
+  let cameraId: string = "";
+  const respondedAt = new Date();
+
+  const result = await recordingRequestRepository.runInTransaction(async (tx) => {
     // 1. Find recording request
     const request = await tx.findRecordingRequestById(requestId);
     if (!request) {
@@ -63,6 +71,10 @@ export async function respondRecordingRequest(
         "Recording request is not in PENDING status",
       );
     }
+
+    // Capture for emit
+    requesterId = request.requestedById;
+    cameraId = request.cameraId;
 
     // 2. Find camera and validate ownership via policy
     const { camera, incident } = await ensureCanRespondRecording({
@@ -87,6 +99,8 @@ export async function respondRecordingRequest(
       );
     }
 
+    communityId = incident.communityId;
+
     // 5. Update recording request
     const newStatus =
       input.action === "ACCEPT"
@@ -104,10 +118,8 @@ export async function respondRecordingRequest(
         ? AuditAction.RECORDING_REQUEST_ACCEPTED
         : AuditAction.RECORDING_REQUEST_REJECTED;
 
-    const communityId = incident.communityId;
-
     await tx.createAuditLog({
-      communityId,
+      communityId: incident.communityId,
       actorId: input.actor.id,
       action: auditAction,
       entityType: "RecordingRequest",
@@ -128,4 +140,24 @@ export async function respondRecordingRequest(
       },
     };
   });
+
+  // Emit realtime event (best-effort, fuera de la transacción)
+  // Audience: DM al requester
+  const emit = emitFn ?? emitRealtimeEvent;
+  await emit({
+    type: "recording-request.responded",
+    communityId,
+    audience: { roomKeys: [`user:${requesterId}`], userIds: [] },
+    payload: {
+      requestId: result.recordingRequest.id,
+      cameraId,
+      requesterId,
+      communityId,
+      status: result.recordingRequest.status,
+      responseComment: result.recordingRequest.ownerComment,
+      respondedAt: respondedAt.toISOString(),
+    },
+  });
+
+  return result;
 }

@@ -46,6 +46,37 @@ const IncidentPayloadSchema = z.object({
   createdAt: z.string().datetime(),
 });
 
+const MemberStatusChangedPayloadSchema = z.object({
+  userId: z.string().uuid(),
+  communityId: z.string().uuid(),
+  previousStatus: z.enum(["PENDING", "ACTIVE", "BLOCKED"]),
+  newStatus: z.enum(["PENDING", "ACTIVE", "BLOCKED"]),
+  changedById: z.string().uuid(),
+  changedAt: z.string().datetime(),
+});
+
+const RecordingRequestCreatedPayloadSchema = z.object({
+  requestId: z.string().uuid(),
+  incidentId: z.string().uuid(),
+  cameraId: z.string().uuid(),
+  ownerId: z.string().uuid(),
+  requesterId: z.string().uuid(),
+  communityId: z.string().uuid(),
+  startTime: z.string().datetime(),
+  endTime: z.string().datetime(),
+  createdAt: z.string().datetime(),
+});
+
+const RecordingRequestRespondedPayloadSchema = z.object({
+  requestId: z.string().uuid(),
+  cameraId: z.string().uuid(),
+  requesterId: z.string().uuid(),
+  communityId: z.string().uuid(),
+  status: z.enum(["PENDING", "ACCEPTED", "REJECTED"]),
+  responseComment: z.string().nullable(),
+  respondedAt: z.string().datetime(),
+});
+
 const EmitBodySchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("alert.created"),
@@ -64,6 +95,33 @@ const EmitBodySchema = z.discriminatedUnion("type", [
       userIds: z.array(z.string()),
     }),
     payload: IncidentPayloadSchema,
+  }),
+  z.object({
+    type: z.literal("community-member.status-changed"),
+    communityId: z.string(),
+    audience: z.object({
+      roomKeys: z.array(z.string()),
+      userIds: z.array(z.string()),
+    }),
+    payload: MemberStatusChangedPayloadSchema,
+  }),
+  z.object({
+    type: z.literal("recording-request.created"),
+    communityId: z.string(),
+    audience: z.object({
+      roomKeys: z.array(z.string()),
+      userIds: z.array(z.string()),
+    }),
+    payload: RecordingRequestCreatedPayloadSchema,
+  }),
+  z.object({
+    type: z.literal("recording-request.responded"),
+    communityId: z.string(),
+    audience: z.object({
+      roomKeys: z.array(z.string()),
+      userIds: z.array(z.string()),
+    }),
+    payload: RecordingRequestRespondedPayloadSchema,
   }),
 ]);
 

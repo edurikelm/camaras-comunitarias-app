@@ -2,6 +2,7 @@ import { AuditAction, RecordingRequestStatus } from "@/generated/prisma/enums";
 import { CommunityInvariantError } from "@/domain/community/errors";
 import type { RecordingRequestRepository } from "./recording-request-repository";
 import { ensureCanRequestRecording } from "@/domain/community/policies";
+import { emitRealtimeEvent } from "@/lib/realtime/emit-realtime-event";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -44,6 +45,7 @@ export type CreateRecordingRequestResult = {
 
 export type CreateRecordingRequestDeps = {
   recordingRequestRepository: RecordingRequestRepository;
+  emitRealtimeEvent?: typeof emitRealtimeEvent;
 };
 
 // ---------------------------------------------------------------------------
@@ -52,7 +54,7 @@ export type CreateRecordingRequestDeps = {
 
 export async function createRecordingRequest(
   input: CreateRecordingRequestInput,
-  { recordingRequestRepository }: CreateRecordingRequestDeps,
+  { recordingRequestRepository, emitRealtimeEvent: emitFn }: CreateRecordingRequestDeps,
 ): Promise<CreateRecordingRequestResult> {
   const { recordingRequest } = input;
 
@@ -94,7 +96,10 @@ export async function createRecordingRequest(
     );
   }
 
-  return recordingRequestRepository.runInTransaction(async (tx) => {
+  // Capture incidentCommunityId before the transaction returns
+  let incidentCommunityId: string = "";
+
+  const result = await recordingRequestRepository.runInTransaction(async (tx) => {
     // 1. Validate actor can request recording (incident/camera/community checks + membership + role)
     const { incident, camera } = await ensureCanRequestRecording({
       client: tx,
@@ -102,6 +107,8 @@ export async function createRecordingRequest(
       incidentId,
       cameraId,
     });
+
+    incidentCommunityId = incident.communityId;
 
     // 2. Create recording request
     const created = await tx.createRecordingRequest({
@@ -148,4 +155,26 @@ export async function createRecordingRequest(
       },
     };
   });
+
+  // Emit realtime event (best-effort, fuera de la transacción)
+  // Audience: DM al owner de la cámara
+  const emit = emitFn ?? emitRealtimeEvent;
+  await emit({
+    type: "recording-request.created",
+    communityId: incidentCommunityId,
+    audience: { roomKeys: [`user:${result.recordingRequest.ownerId}`], userIds: [] },
+    payload: {
+      requestId: result.recordingRequest.id,
+      incidentId: result.recordingRequest.incidentId,
+      cameraId: result.recordingRequest.cameraId,
+      ownerId: result.recordingRequest.ownerId,
+      requesterId: result.recordingRequest.requestedById,
+      communityId: incidentCommunityId,
+      startTime: result.recordingRequest.startTime.toISOString(),
+      endTime: result.recordingRequest.endTime.toISOString(),
+      createdAt: result.recordingRequest.createdAt.toISOString(),
+    },
+  });
+
+  return result;
 }

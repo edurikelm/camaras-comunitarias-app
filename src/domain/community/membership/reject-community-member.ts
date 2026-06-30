@@ -10,6 +10,7 @@ import type {
   CommunityUnitOfWork,
 } from "@/domain/community/community-repository";
 import { ensureCanRejectMember } from "@/domain/community/policies";
+import { emitRealtimeEvent } from "@/lib/realtime/emit-realtime-event";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -43,6 +44,7 @@ export type RejectMemberResult = {
 
 export type RejectMemberDeps = {
   repository: CommunityMembershipRepository;
+  emitRealtimeEvent?: typeof emitRealtimeEvent;
 };
 
 // ---------------------------------------------------------------------------
@@ -51,7 +53,7 @@ export type RejectMemberDeps = {
 
 export async function rejectCommunityMember(
   input: RejectMemberInput,
-  { repository }: RejectMemberDeps,
+  { repository, emitRealtimeEvent: emitFn }: RejectMemberDeps,
 ): Promise<RejectMemberResult> {
   const communityId = input.communityId.trim();
   if (!communityId) {
@@ -63,7 +65,11 @@ export async function rejectCommunityMember(
     throw new CommunityInvariantError("memberId is required");
   }
 
-  return repository.runInTransaction(async (tx: CommunityUnitOfWork) => {
+  // Capture previousStatus before the transaction (targetMember.status is PENDING)
+  let previousStatus: CommunityMemberStatus = CommunityMemberStatus.PENDING;
+  const changedAt = new Date();
+
+  const result = await repository.runInTransaction(async (tx: CommunityUnitOfWork) => {
     // 1. Validate actor can reject member (community ACTIVE + actor ADMIN + target member exists/PENDING/belongs)
     const { targetMember } = await ensureCanRejectMember({
       client: tx,
@@ -71,6 +77,8 @@ export async function rejectCommunityMember(
       communityId,
       memberId,
     });
+
+    previousStatus = targetMember.status;
 
     // 2. Block the member
     const updatedMember = await tx.updateCommunityMember(memberId, {
@@ -93,4 +101,22 @@ export async function rejectCommunityMember(
 
     return { member: updatedMember };
   });
+
+  // Emit realtime event (best-effort, fuera de la transacción)
+  const emit = emitFn ?? emitRealtimeEvent;
+  await emit({
+    type: "community-member.status-changed",
+    communityId,
+    audience: { roomKeys: [`user:${result.member.userId}`], userIds: [] },
+    payload: {
+      userId: result.member.userId,
+      communityId,
+      previousStatus,
+      newStatus: "BLOCKED",
+      changedById: input.actor.id,
+      changedAt: changedAt.toISOString(),
+    },
+  });
+
+  return result;
 }

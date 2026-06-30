@@ -333,4 +333,34 @@ describe("respondRecordingRequest", () => {
 
     expect(repository.runInTransaction).not.toHaveBeenCalled();
   });
+
+  it("emits recording-request.responded after successful response", async () => {
+    const repository = createRepository();
+    const emitRealtimeEvent = vi.fn().mockResolvedValue(undefined);
+
+    const result = await respondRecordingRequest(validInput, {
+      recordingRequestRepository: repository,
+      emitRealtimeEvent,
+    });
+
+    expect(result.recordingRequest.status).toBe(RecordingRequestStatus.ACCEPTED);
+
+    expect(emitRealtimeEvent).toHaveBeenCalledTimes(1);
+    expect(emitRealtimeEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "recording-request.responded",
+        audience: expect.objectContaining({
+          roomKeys: expect.arrayContaining(["user:user-1"]),
+        }),
+        payload: expect.objectContaining({
+          requestId: "recording-request-1",
+          cameraId: "camera-1",
+          requesterId: "user-1",
+          communityId: "community-1",
+          status: "ACCEPTED",
+          responseComment: "Sure, I'll check the footage",
+        }),
+      }),
+    );
+  });
 });

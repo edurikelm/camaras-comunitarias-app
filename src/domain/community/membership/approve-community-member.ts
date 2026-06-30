@@ -12,6 +12,7 @@ import type {
   CommunityUnitOfWork,
 } from "@/domain/community/community-repository";
 import { ensureCanApproveMember } from "@/domain/community/policies";
+import { emitRealtimeEvent } from "@/lib/realtime/emit-realtime-event";
 
 // ---------------------------------------------------------------------------
 // Input
@@ -46,6 +47,7 @@ export type ApproveMemberResult = {
 
 export type ApproveMemberDeps = {
   repository: CommunityMembershipRepository;
+  emitRealtimeEvent?: typeof emitRealtimeEvent;
 };
 
 // ---------------------------------------------------------------------------
@@ -59,7 +61,7 @@ const ALLOWED_APPROVAL_ROLES: CommunityMemberRole[] = [
 
 export async function approveCommunityMember(
   input: ApproveMemberInput,
-  { repository }: ApproveMemberDeps,
+  { repository, emitRealtimeEvent: emitFn }: ApproveMemberDeps,
 ): Promise<ApproveMemberResult> {
   const communityId = input.communityId.trim();
   if (!communityId) {
@@ -77,7 +79,11 @@ export async function approveCommunityMember(
     );
   }
 
-  return repository.runInTransaction(async (tx: CommunityUnitOfWork) => {
+  // Capture previousStatus before the transaction (targetMember.status is PENDING)
+  let previousStatus: CommunityMemberStatus = CommunityMemberStatus.PENDING;
+  const changedAt = new Date();
+
+  const result = await repository.runInTransaction(async (tx: CommunityUnitOfWork) => {
     // 1. Validate actor can approve member (community ACTIVE + actor ADMIN + target member exists/PENDING/belongs)
     const { targetMember } = await ensureCanApproveMember({
       client: tx,
@@ -85,6 +91,8 @@ export async function approveCommunityMember(
       communityId,
       memberId,
     });
+
+    previousStatus = targetMember.status;
 
     // 2. Activate and set role
     const updatedMember = await tx.updateCommunityMember(memberId, {
@@ -108,4 +116,22 @@ export async function approveCommunityMember(
 
     return { member: updatedMember };
   });
+
+  // Emit realtime event (best-effort, fuera de la transacción)
+  const emit = emitFn ?? emitRealtimeEvent;
+  await emit({
+    type: "community-member.status-changed",
+    communityId,
+    audience: { roomKeys: [`user:${result.member.userId}`], userIds: [] },
+    payload: {
+      userId: result.member.userId,
+      communityId,
+      previousStatus,
+      newStatus: "ACTIVE",
+      changedById: input.actor.id,
+      changedAt: changedAt.toISOString(),
+    },
+  });
+
+  return result;
 }

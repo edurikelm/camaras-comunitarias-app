@@ -236,4 +236,33 @@ describe("approveCommunityMember", () => {
     expect(repository.updateCommunityMember).not.toHaveBeenCalled();
     expect(repository.createAuditLog).not.toHaveBeenCalled();
   });
+
+  it("emits community-member.status-changed after successful approval", async () => {
+    const repository = createRepository();
+    const emitRealtimeEvent = vi.fn().mockResolvedValue(undefined);
+
+    const result = await approveCommunityMember(validInput, {
+      repository,
+      emitRealtimeEvent,
+    });
+
+    expect(result.member.status).toBe(CommunityMemberStatus.ACTIVE);
+
+    expect(emitRealtimeEvent).toHaveBeenCalledTimes(1);
+    expect(emitRealtimeEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "community-member.status-changed",
+        audience: expect.objectContaining({
+          roomKeys: expect.arrayContaining(["user:user-new-1"]),
+        }),
+        payload: expect.objectContaining({
+          userId: "user-new-1",
+          communityId: "community-1",
+          previousStatus: "PENDING",
+          newStatus: "ACTIVE",
+          changedById: "user-admin-1",
+        }),
+      }),
+    );
+  });
 });

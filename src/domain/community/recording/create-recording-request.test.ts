@@ -512,4 +512,33 @@ describe("createRecordingRequest", () => {
 
     expect(repository.runInTransaction).not.toHaveBeenCalled();
   });
+
+  it("emits recording-request.created after successful creation", async () => {
+    const repository = createRepository();
+    const emitRealtimeEvent = vi.fn().mockResolvedValue(undefined);
+
+    const result = await createRecordingRequest(validInput, {
+      recordingRequestRepository: repository,
+      emitRealtimeEvent,
+    });
+
+    expect(result.recordingRequest.status).toBe(RecordingRequestStatus.PENDING);
+
+    expect(emitRealtimeEvent).toHaveBeenCalledTimes(1);
+    expect(emitRealtimeEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "recording-request.created",
+        audience: expect.objectContaining({
+          roomKeys: expect.arrayContaining(["user:camera-owner-1"]),
+        }),
+        payload: expect.objectContaining({
+          requestId: "recording-request-1",
+          incidentId: "incident-1",
+          cameraId: "camera-1",
+          ownerId: "camera-owner-1",
+          requesterId: "user-1",
+        }),
+      }),
+    );
+  });
 });
