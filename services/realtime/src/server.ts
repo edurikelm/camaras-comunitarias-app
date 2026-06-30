@@ -18,6 +18,7 @@ import { createPrismaUserLookup } from "./infrastructure/prisma-user-lookup.js";
 import { createPrismaMembershipLookupsAdapter } from "./infrastructure/prisma-membership-lookups.js";
 import { registerSocketAuth } from "./auth/socket-auth.js";
 import { bindConnectionHandlers } from "./connection/on-connection.js";
+import { registerEmitHandler } from "./internal/emit-handler.js";
 
 // Cargar variables de entorno desde .env antes que nada.
 // Node NO carga .env automaticamente (eso lo hace Next.js via dotenv por nosotros).
@@ -93,6 +94,9 @@ export function createServer(options: CreateServerOptions = {}): Server {
   // PR #2: rooms y autorizacion de suscripcion
   const lookups = createPrismaMembershipLookupsAdapter(prisma);
   bindConnectionHandlers(io, prisma, lookups, logger);
+
+  // PR #3: handler de emision interna (POST /internal/emit)
+  registerEmitHandler(app, io, config);
 
   let started = false;
 

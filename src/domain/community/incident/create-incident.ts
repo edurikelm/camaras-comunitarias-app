@@ -5,6 +5,8 @@ import {
 } from "@/domain/community/errors";
 import type { IncidentRepository } from "./incident-repository";
 import { ensureCanCreateIncident } from "@/domain/community/policies";
+import { calculateAudience } from "@/domain/realtime/audience-calculator";
+import { emitRealtimeEvent } from "@/lib/realtime/emit-realtime-event";
 
 // ---------------------------------------------------------------------------
 // Severity suggestion
@@ -53,6 +55,7 @@ export type CreateIncidentResult = {
     location: string | null;
     sectorId: string | null;
     createdAt: Date;
+    createdById: string;
   };
   alert: {
     id: string;
@@ -67,6 +70,7 @@ export type CreateIncidentResult = {
 
 export type CreateIncidentDeps = {
   incidentRepository: IncidentRepository;
+  emitRealtimeEvent?: typeof emitRealtimeEvent;
 };
 
 // ---------------------------------------------------------------------------
@@ -75,7 +79,7 @@ export type CreateIncidentDeps = {
 
 export async function createIncident(
   input: CreateIncidentInput,
-  { incidentRepository }: CreateIncidentDeps,
+  { incidentRepository, emitRealtimeEvent: emitFn }: CreateIncidentDeps,
 ): Promise<CreateIncidentResult> {
   const communityId = input.communityId.trim();
   if (!communityId) {
@@ -96,7 +100,7 @@ export async function createIncident(
     throw new CommunityInvariantError("Incident description is required");
   }
 
-  return incidentRepository.runInTransaction(async (tx) => {
+  const result = await incidentRepository.runInTransaction(async (tx) => {
     // 1. Validate actor can create incident (community ACTIVE + member is NEIGHBOR or GUARD)
     await ensureCanCreateIncident({
       client: tx,
@@ -173,6 +177,7 @@ export async function createIncident(
         location: createdIncident.location,
         sectorId: createdIncident.sectorId,
         createdAt: createdIncident.createdAt,
+        createdById: createdIncident.createdById,
       },
       alert: {
         id: alert.id,
@@ -181,4 +186,52 @@ export async function createIncident(
       },
     };
   });
+
+  // Emit realtime events (best-effort, fuera de la transacción)
+  const audience = calculateAudience({
+    communityId: result.incident.communityId,
+    sectorId: result.incident.sectorId,
+    severity: result.incident.severity,
+  });
+
+  const emit = emitFn ?? emitRealtimeEvent;
+
+  // alert.created — best-effort, el helper traga excepciones y loggea warnings
+  await emit({
+    type: "alert.created",
+    communityId: result.incident.communityId,
+    audience: { roomKeys: audience.roomKeys, userIds: [] },
+    payload: {
+      alertId: result.alert.id,
+      communityId: result.incident.communityId,
+      sectorId: result.incident.sectorId,
+      severity: result.incident.severity,
+      type: result.incident.type,
+      message: result.alert.message,
+      incidentId: result.incident.id,
+      sosEventId: null,
+      createdAt: result.incident.createdAt.toISOString(),
+    },
+  });
+
+  // incident.created — best-effort, el helper traga excepciones y loggea warnings
+  await emit({
+    type: "incident.created",
+    communityId: result.incident.communityId,
+    audience: { roomKeys: audience.roomKeys, userIds: [] },
+    payload: {
+      incidentId: result.incident.id,
+      communityId: result.incident.communityId,
+      sectorId: result.incident.sectorId,
+      type: result.incident.type,
+      severity: result.incident.severity,
+      status: result.incident.status,
+      description: result.incident.description,
+      location: result.incident.location,
+      createdById: result.incident.createdById,
+      createdAt: result.incident.createdAt.toISOString(),
+    },
+  });
+
+  return result;
 }

@@ -440,4 +440,37 @@ describe("createIncident", () => {
 
     expect(result.incident.severity).toBe(AlertSeverity.HIGH);
   });
+
+  it("emits alert.created and incident.created after successful incident creation", async () => {
+    const repository = createRepository();
+    const emitRealtimeEvent = vi.fn().mockResolvedValue(undefined);
+
+    const result = await createIncident(validInput, {
+      incidentRepository: repository,
+      emitRealtimeEvent,
+    });
+
+    // Verify incident returned with createdById
+    expect(result.incident.createdById).toBe("user-1");
+
+    // Verify emitRealtimeEvent was called twice: alert.created then incident.created
+    expect(emitRealtimeEvent).toHaveBeenCalledTimes(2);
+
+    const [firstCall, secondCall] = emitRealtimeEvent.mock.calls;
+
+    // First call: alert.created
+    expect(firstCall[0].type).toBe("alert.created");
+    expect(firstCall[0].payload.alertId).toBe("alert-1");
+    expect(firstCall[0].payload.severity).toBe("HIGH");
+
+    // Second call: incident.created
+    expect(secondCall[0].type).toBe("incident.created");
+    expect(secondCall[0].payload.incidentId).toBe("incident-1");
+    expect(secondCall[0].payload.createdById).toBe("user-1");
+
+    // THEFT = HIGH without sector → audience should be communityRoom + roleAdminGuardRoom
+    const audience = firstCall[0].audience;
+    expect(audience.roomKeys).toContain("community:community-1");
+    expect(audience.roomKeys).toContain("role:admin-guard:community:community-1");
+  });
 });
