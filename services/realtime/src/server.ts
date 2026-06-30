@@ -11,7 +11,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 // En produccion compilado a .js se ajustaria este path (o se usa un build step).
 // @ts-expect-error TS no resuelve .ts en imports cross-project
 import { PrismaClient } from "../../../src/generated/prisma/client.ts";
-import { loadConfig, type Config } from "./config.js";
+import { loadConfig, resolveJwtIssuer, type Config } from "./config.js";
 import { createLogger, type Logger } from "./logger.js";
 import { registerHealthRoutes } from "./health.js";
 import { createPrismaUserLookup } from "./infrastructure/prisma-user-lookup.js";
@@ -86,7 +86,9 @@ export function createServer(options: CreateServerOptions = {}): Server {
   registerSocketAuth(io, {
     jwksUrl: `${config.SUPABASE_URL}/auth/v1/.well-known/jwks.json`,
     jwtAudience: config.SUPABASE_JWT_AUDIENCE,
-    jwtIssuer: config.SUPABASE_URL,
+    // Supabase firma con `iss = ${SUPABASE_URL}/auth/v1`. NO usar `SUPABASE_URL`
+    // pelado: produce ERR_JWT_CLAIM_VALIDATION_FAILED y rechaza todo handshake.
+    jwtIssuer: resolveJwtIssuer(config),
     users: createPrismaUserLookup(prisma),
     logger,
   });
