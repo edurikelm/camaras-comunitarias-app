@@ -921,6 +921,58 @@ cd services/realtime && npx vitest run
 
 **Criterio "listo para release"**: todos los eventos del inventario MVP estan cubiertos en tests. La suite de `services/realtime` y los tests de Next.js pasan en verde. El servicio realtime arranca con `npm run dev:realtime` y se conecta a una instancia de Supabase cloud. Logs estructurados visibles en stdout.
 
+### PR #5 — Browser client + integracion UI
+
+**Objetivo**: el navegador se conecta a `services/realtime` y refleja los 5 eventos del MVP en la UI. Slice que cierra la pregunta "¿se puede ver en la UI?".
+
+**Crear**:
+
+- `src/lib/realtime/client.ts` — factory `createRealtimeClient({ url, accessToken })` que devuelve un `Socket` de socket.io-client con `auth: { token }`, `transports: ["websocket"]`, `autoConnect: false` (ciclo de vida controlado por el provider).
+- `src/components/providers/realtime-provider.tsx` — context React que conecta/desconecta segun el estado de Supabase Auth via `onAuthStateChange`. Expone `useRealtime()` con `{ status, socket, error }`.
+- `src/components/ui/sonner.tsx` — wrapper shadcn de `sonner` (toast library).
+- `src/components/realtime/realtime-toaster.tsx` — suscribe a los 5 eventos y muestra toasts. Severidad se indica con texto + color (no solo color, ver `DESIGN.md`).
+- `src/components/realtime/realtime-refresh.tsx` — suscribe a `incident.created`, `community-member.status-changed`, `recording-request.*` y llama `router.refresh()` cuando el `pathname` es relevante (`/incidents`, `/dashboard`).
+- Tests: `client.test.ts` (2), `realtime-provider.test.tsx` (4), `realtime-toaster.test.tsx` (2), `realtime-refresh.test.tsx` (3).
+
+**Modificar**:
+
+- `package.json` — agregar `socket.io-client: ^4.8.0` y `sonner: ^1.7.0` a `dependencies`.
+- `src/app/layout.tsx` — envolver `{children}` con `RealtimeProvider`, renderizar `<Toaster />`, `<RealtimeToaster />` y `<RealtimeRefresh />` dentro del provider.
+- `.env.example` y `.env.local` — agregar `NEXT_PUBLIC_REALTIME_URL=http://localhost:3001`.
+
+**Decisiones clave**:
+
+- El ciclo de vida del socket lo controla el provider, no el factory (`autoConnect: false`). Asi el provider decide cuando reconectar segun `onAuthStateChange`.
+- El provider escucha `SIGNED_OUT` y `TOKEN_REFRESHED`. En `TOKEN_REFRESHED` actualiza `socket.auth = { token: newToken }` y reconecta. Limitacion documentada: tokens expirados mid-session pueden no refrescarse si Supabase Auth no emite el evento (caso raro).
+- Token refresh via `socket.disconnect().connect()` (no via `socket.io.opts.auth` setter). Patron documentado en socket.io docs.
+- Toast library: `sonner` (estandar shadcn, ~3kb). Se eligio sobre `@radix-ui/react-toast` por ergonomia y peso.
+- Auto-refresh con debounce de 500ms para evitar rafagas en multiples eventos simultaneos.
+
+**Verificacion**:
+
+```bash
+npx tsc --noEmit
+npx vitest run src/lib/realtime src/components/providers src/components/realtime
+npx vitest run
+```
+
+**E2E manual (smoke test)**:
+
+1. Arrancar `services/realtime` (`npm run dev:realtime`) y Next.js (`npm run dev`).
+2. Login como usuario ADMIN de comunidad X. Verificar en DevTools Network que hay un WebSocket abierto a `localhost:3001/socket.io/`.
+3. En otra pestana, como usuario NEIGHBOR de la misma comunidad, crear un incidente HIGH. Verificar que la pestana del ADMIN recibe un toast "Nuevo incidente: ..." en <1s.
+4. Verificar que la lista de `/incidents` se actualiza automaticamente (router.refresh dispara re-fetch del server component).
+5. Aprobar una membresia PENDING. Verificar que la pestana del usuario aprobado recibe un toast "Membresia activa".
+6. Crear una recording request a una camara de un vecino. Verificar que el dueno de la camara recibe el toast.
+7. Logout → verificar que el WebSocket se cierra en DevTools.
+
+**Criterio "listo"**: el usuario final ve toasts en tiempo real y las listas de `/dashboard` e `/incidents` se actualizan solas cuando hay eventos relevantes. Sin F5 manual. Tests verdes.
+
+**Limitaciones conocidas**:
+
+- No hay indicador visual de "conectado/desconectado" en la UI. Si el servicio realtime cae, el provider intenta reconectar silenciosamente. Si se requiere feedback, agregar un badge en la sidebar (futuro PR).
+- Token refresh depende de que Supabase Auth emita el evento `TOKEN_REFRESHED`. No es garantizado en todos los flujos.
+
 ### Tests del seam realtime
 
 Estructura general (sigue el patron ADR-0016):

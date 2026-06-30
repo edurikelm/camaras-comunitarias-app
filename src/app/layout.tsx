@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SupabaseProvider } from "@/components/providers/supabase-provider";
+import { RealtimeProvider } from "@/components/providers/realtime-provider";
+import { Toaster } from "@/components/ui/sonner";
+import { RealtimeToaster } from "@/components/realtime/realtime-toaster";
+import { RealtimeRefresh } from "@/components/realtime/realtime-refresh";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,7 +37,14 @@ export default function RootLayout({
         >
           Saltar al contenido principal
         </a>
-        <SupabaseProvider>{children}</SupabaseProvider>
+        <SupabaseProvider>
+          <RealtimeProvider>
+            <RealtimeToaster />
+            <RealtimeRefresh />
+            {children}
+          </RealtimeProvider>
+        </SupabaseProvider>
+        <Toaster />
       </body>
     </html>
   );
