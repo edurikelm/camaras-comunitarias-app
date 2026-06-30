@@ -49,6 +49,14 @@ function isTopLevelClient(
  *   const membershipLookups = createPrismaMembershipLookupsAdapter(tx);
  *   const community = await membershipLookups.findCommunityById(id);
  * });
+ *
+ * NOTA sobre divergencia con el mirror del realtime service: el mirror en
+ * `services/realtime/src/infrastructure/prisma-membership-lookups.ts` incluye
+ * `sectorId: true` en sus selects. Esto es INTENCIONAL porque el realtime
+ * necesita sectorId para validar suscripciones a sector rooms. Este adapter
+ * no lo selecciona porque ninguna policy de dominio lo consume. Si en el
+ * futuro una policy lo necesita, agregar sectorId al select de este adapter
+ * para mantener consistencia con el mirror.
  */
 export function createPrismaMembershipLookupsAdapter(
   client: PrismaClient | Prisma.TransactionClient,

@@ -22,6 +22,7 @@ export type MemberLookupRecord = {
   communityId: string;
   role: CommunityMemberRole;
   status: CommunityMemberStatus;
+  sectorId?: string;
 };
 
 /**

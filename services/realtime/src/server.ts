@@ -15,7 +15,9 @@ import { loadConfig, type Config } from "./config.js";
 import { createLogger, type Logger } from "./logger.js";
 import { registerHealthRoutes } from "./health.js";
 import { createPrismaUserLookup } from "./infrastructure/prisma-user-lookup.js";
+import { createPrismaMembershipLookupsAdapter } from "./infrastructure/prisma-membership-lookups.js";
 import { registerSocketAuth } from "./auth/socket-auth.js";
+import { bindConnectionHandlers } from "./connection/on-connection.js";
 
 // Cargar variables de entorno desde .env antes que nada.
 // Node NO carga .env automaticamente (eso lo hace Next.js via dotenv por nosotros).
@@ -74,7 +76,7 @@ export function createServer(options: CreateServerOptions = {}): Server {
   // Rutas de health check
   registerHealthRoutes(app, prisma);
 
-  // Socket.IO (sin auth ni handlers — PR #1 y PR #2)
+  // Socket.IO (auth PR #1, handlers PR #2)
   const io = new SocketIOServer(app.server, {
     cors: { origin: config.CORS_ORIGIN, credentials: true },
   });
@@ -87,6 +89,10 @@ export function createServer(options: CreateServerOptions = {}): Server {
     users: createPrismaUserLookup(prisma),
     logger,
   });
+
+  // PR #2: rooms y autorizacion de suscripcion
+  const lookups = createPrismaMembershipLookupsAdapter(prisma);
+  bindConnectionHandlers(io, prisma, lookups, logger);
 
   let started = false;
 
