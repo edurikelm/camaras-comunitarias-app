@@ -5,7 +5,6 @@ import {
   BellRingIcon,
   CameraIcon,
   MapPinnedIcon,
-  ShieldCheckIcon,
   UsersIcon,
 } from "lucide-react";
 
@@ -247,22 +246,6 @@ export default async function DashboardPage() {
         )}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ShieldCheckIcon data-icon="inline-start" />
-            Proximo paso operativo
-          </CardTitle>
-          <CardDescription>
-            Implementar servicios de dominio antes de conectar datos reales.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex items-center gap-2 text-sm text-muted-foreground">
-          <UsersIcon data-icon="inline-start" />
-          Validar comunidad, rol, estado ACTIVE y estado de comunidad en cada
-          consulta sensible.
-        </CardContent>
-      </Card>
-    </RouteShell>
+      </RouteShell>
   );
 }
