@@ -90,8 +90,14 @@ type RegisterCameraFormValues = z.infer<typeof registerCameraSchema>;
 
 const ERROR_MAP: Record<string, string> = {
   "Camera name is required": "El nombre de la camara es requerido.",
+  "name is required": "El nombre de la camara es requerido.",
   "A valid RTSP URL starting with rtsp:// is required":
     "La URL RTSP debe comenzar con rtsp:// y tener formato valido.",
+  "rtspUrl is required": "Ingresá la URL RTSP de la camara.",
+  "rtspUrl must start with rtsp://":
+    "La URL RTSP debe comenzar con rtsp:// y tener formato valido.",
+  "sectorId must be a valid UUID":
+    "El sector seleccionado no es valido. Refresca la pagina.",
   "Sector does not belong to this community":
     "El sector seleccionado no pertenece a tu comunidad.",
   "Only an ACTIVE NEIGHBOR, GUARD, or ADMIN can register a camera":
